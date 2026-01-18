@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: barbearia_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: barbearia_db
+      POSTGRES_USER: barbearia
+      POSTGRES_PASSWORD: barbearia@777
+    volumes:
+      - barbearia_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: barbearia_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  api:
+    build: .
+    container_name: barbearia_api
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/barbearia_db
+      SPRING_DATASOURCE_USERNAME: barbearia
+      SPRING_DATASOURCE_PASSWORD: barbearia@777
+
+volumes:
+  barbearia_pgdata:
