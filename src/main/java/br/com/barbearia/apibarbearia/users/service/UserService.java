@@ -4,7 +4,7 @@ import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
 import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
 import br.com.barbearia.apibarbearia.users.dtos.UserCreateRequest;
 import br.com.barbearia.apibarbearia.users.dtos.UserResponse;
-import br.com.barbearia.apibarbearia.users.dtos.UserUpdateRequest; 
+import br.com.barbearia.apibarbearia.users.dtos.UserUpdateRequest;
 import br.com.barbearia.apibarbearia.users.dtos.UserWithTempPasswordResponse;
 import br.com.barbearia.apibarbearia.users.entity.Role.Role;
 import br.com.barbearia.apibarbearia.users.entity.User;
@@ -55,8 +55,8 @@ public class UserService {
 
     public UserWithTempPasswordResponse create(UserCreateRequest req) {
         Role actor = currentRole();
-        String email = normalizeEmail(req.email);
 
+        String email = normalizeEmail(req.email);
         if (email == null || email.isBlank()) {
             throw new BadRequestException("E-mail é obrigatório.");
         }
@@ -88,7 +88,6 @@ public class UserService {
         User target = getUser(id);
 
         String email = normalizeEmail(req.email);
-
         if (email == null || email.isBlank()) {
             throw new BadRequestException("E-mail é obrigatório.");
         }

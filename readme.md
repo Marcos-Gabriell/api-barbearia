@@ -173,9 +173,7 @@ O projeto utiliza **Docker** para:
 - 🚧 Dashboard inteligente
 - 🚧 Relatórios estratégicos
 - 🔜 Envio de e-mails
-- 🔜 Integração com WhatsApp
-- 🔜 Documentação da API (Swagger)
-- 🔜 Integração com front-end Angular 19
+- 🔜 Desenvolvimento do front-end Angular 19
 
 ---
 
