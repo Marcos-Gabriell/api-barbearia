@@ -2,6 +2,7 @@ package br.com.barbearia.apibarbearia.users.controller;
 
 import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
 import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
+import br.com.barbearia.apibarbearia.notification.email.users.UserEmailNotificationService;
 import br.com.barbearia.apibarbearia.users.dtos.UpdateMyProfileRequest;
 import br.com.barbearia.apibarbearia.users.dtos.UserResponse;
 import br.com.barbearia.apibarbearia.users.entity.User;
@@ -21,6 +22,7 @@ import java.util.Map;
 public class UserProfileController {
 
     private final UserRepository userRepository;
+    private final UserEmailNotificationService emailNotificationService;
 
     @PutMapping
     public ResponseEntity<?> updateMyProfile(
@@ -37,25 +39,21 @@ public class UserProfileController {
         user.setName(req.name);
         user.setEmail(req.email.toLowerCase());
         user.setUpdatedAt(Instant.now());
+        User saved = userRepository.save(user);
 
-        UserResponse resp = toResponse(userRepository.save(user));
+        emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
 
         return ResponseEntity.ok(Map.of(
                 "message", "Dados atualizados com sucesso.",
-                "data", resp
+                "data", toResponse(saved)
         ));
     }
 
     private UserResponse toResponse(User user) {
         UserResponse r = new UserResponse();
-        r.id = user.getId();
-        r.name = user.getName();
-        r.email = user.getEmail();
-        r.role = user.getRole();
-        r.active = user.isActive();
+        r.id = user.getId(); r.name = user.getName(); r.email = user.getEmail();
+        r.role = user.getRole(); r.active = user.isActive();
         r.mustChangePassword = user.isMustChangePassword();
-        r.createdAt = user.getCreatedAt();
-        r.updatedAt = user.getUpdatedAt();
         return r;
     }
 }

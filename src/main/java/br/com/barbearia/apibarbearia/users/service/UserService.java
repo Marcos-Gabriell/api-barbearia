@@ -1,11 +1,10 @@
 package br.com.barbearia.apibarbearia.users.service;
 
 import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
+import br.com.barbearia.apibarbearia.common.exception.ConflictException;
 import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
-import br.com.barbearia.apibarbearia.users.dtos.UserCreateRequest;
-import br.com.barbearia.apibarbearia.users.dtos.UserResponse;
-import br.com.barbearia.apibarbearia.users.dtos.UserUpdateRequest;
-import br.com.barbearia.apibarbearia.users.dtos.UserWithTempPasswordResponse;
+import br.com.barbearia.apibarbearia.notification.email.users.UserEmailNotificationService;
+import br.com.barbearia.apibarbearia.users.dtos.*;
 import br.com.barbearia.apibarbearia.users.entity.Role.Role;
 import br.com.barbearia.apibarbearia.users.entity.User;
 import br.com.barbearia.apibarbearia.users.repository.UserRepository;
@@ -16,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,20 +25,19 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserEmailNotificationService emailNotificationService;
 
     public List<UserResponse> list() {
         Role actor = currentRole();
 
         if (actor == Role.DEV) {
             return userRepository.findAll()
-                    .stream()
-                    .map(this::toResponse)
+                    .stream().map(this::toResponse)
                     .collect(Collectors.toList());
         }
 
         return userRepository.findAllByRole(Role.STAFF)
-                .stream()
-                .map(this::toResponse)
+                .stream().map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -55,19 +54,26 @@ public class UserService {
 
     public UserWithTempPasswordResponse create(UserCreateRequest req) {
         Role actor = currentRole();
-
         String email = normalizeEmail(req.email);
+
         if (email == null || email.isBlank()) {
             throw new BadRequestException("E-mail é obrigatório.");
-        }
-
-        if (userRepository.existsByEmail(email)) {
-            throw new BadRequestException("Este e-mail já está em uso.");
         }
 
         if (actor == Role.ADMIN && req.role != Role.STAFF) {
             throw new BadRequestException("Administrador só pode criar usuários do tipo STAFF.");
         }
+
+        if (userRepository.existsByEmailAndActiveTrue(email)) {
+            throw new ConflictException("Este e-mail já está em uso por um usuário ativo.");
+        }
+
+        userRepository.findByEmail(email).ifPresent(existing -> {
+            if (!existing.isActive()) {
+                userRepository.delete(existing);
+                userRepository.flush();
+            }
+        });
 
         String temp = generateTempPassword(10);
 
@@ -78,7 +84,15 @@ public class UserService {
                 .passwordHash(passwordEncoder.encode(temp))
                 .active(true)
                 .mustChangePassword(true)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .build());
+
+        try {
+            emailNotificationService.sendUserCreated(saved.getEmail(), saved.getName(), saved.getEmail(), temp);
+        } catch (Exception e) {
+            System.err.println("Falha ao enviar e-mail de boas-vindas: " + e.getMessage());
+        }
 
         return wrapWithTemp(saved, temp);
     }
@@ -104,50 +118,26 @@ public class UserService {
             throw new BadRequestException("Administrador não pode alterar o perfil de usuário.");
         }
 
+        String actorEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        boolean updatedBySelf = actorEmail != null && actorEmail.equalsIgnoreCase(target.getEmail());
+
         target.setName(req.name);
         target.setEmail(email);
+        target.setUpdatedAt(Instant.now());
 
         if (actor == Role.DEV) {
             target.setRole(req.role);
         }
 
-        return toResponse(userRepository.save(target));
-    }
+        User saved = userRepository.save(target);
 
-    public UserResponse deleteAndReturn(Long id) {
-        Role actor = currentRole();
-        User target = getUser(id);
-
-        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode excluir usuários do tipo STAFF.");
+        if (updatedBySelf) {
+            emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
+        } else {
+            emailNotificationService.sendUserUpdatedByAdmin(saved.getEmail(), saved.getName(), actorEmail, actor.name());
         }
 
-        if (!target.isActive()) {
-            throw new BadRequestException("Usuário já está desativado.");
-        }
-
-        target.setActive(false);
-        userRepository.save(target);
-
-        return toResponse(target);
-    }
-
-    public UserResponse activateAndReturn(Long id) {
-        Role actor = currentRole();
-        User target = getUser(id);
-
-        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode ativar usuários do tipo STAFF.");
-        }
-
-        if (target.isActive()) {
-            throw new BadRequestException("Usuário já está ativo.");
-        }
-
-        target.setActive(true);
-        userRepository.save(target);
-
-        return toResponse(target);
+        return toResponse(saved);
     }
 
     public UserWithTempPasswordResponse resetPassword(Long id) {
@@ -159,12 +149,46 @@ public class UserService {
         }
 
         String temp = generateTempPassword(10);
+
         target.setPasswordHash(passwordEncoder.encode(temp));
         target.setMustChangePassword(true);
+        target.setUpdatedAt(Instant.now());
 
         userRepository.save(target);
+
+        // ✅ não pode quebrar
+        emailNotificationService.sendUserCreated(target.getEmail(), target.getName(), target.getEmail(), temp);
+
         return wrapWithTemp(target, temp);
     }
+
+    // ✅ HARD DELETE: apaga do banco de verdade
+    public UserResponse deleteAndReturn(Long id) {
+        Role actor = currentRole();
+        User target = getUser(id);
+
+        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
+            throw new BadRequestException("Administrador só pode excluir usuários do tipo STAFF.");
+        }
+
+        userRepository.delete(target);
+        return toResponse(target);
+    }
+
+    public UserResponse activateAndReturn(Long id) {
+        Role actor = currentRole();
+        User target = getUser(id);
+
+        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
+            throw new BadRequestException("Administrador só pode ativar usuários do tipo STAFF.");
+        }
+
+        target.setActive(true);
+        target.setUpdatedAt(Instant.now());
+        return toResponse(userRepository.save(target));
+    }
+
+    // ---------------- helpers ----------------
 
     private User getUser(Long id) {
         return userRepository.findById(id)
@@ -212,6 +236,7 @@ public class UserService {
         final String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#";
         SecureRandom random = new SecureRandom();
         StringBuilder sb = new StringBuilder(length);
+
         for (int i = 0; i < length; i++) {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
