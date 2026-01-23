@@ -27,7 +27,7 @@ Criar uma **API moderna, segura e escalável** que permita à barbearia controla
 
 ---
 
-## 🔐 Segurança e Gestão de Identidade (Novo)
+## 🔐 Segurança e Gestão de Identidade
 
 O sistema conta agora com um módulo de segurança avançado:
 
@@ -62,6 +62,15 @@ Não há cadastro público aberto. O acesso é controlado via convite:
 
 ---
 
+## ⚡ Performance e Assincronicidade (`@EnableAsync`)
+
+Para garantir que o sistema suporte múltiplos usuários simultâneos sem travamentos, utilizamos a annotation `@EnableAsync` para processamento paralelo:
+
+- **E-mails em Background:** O envio de e-mails (convites, recuperações, notificações) é processado em uma thread separada.
+- **Benefício:** Isso impede que a API fique "esperando" o servidor de e-mail responder. O usuário recebe a confirmação na tela instantaneamente, enquanto o sistema trabalha nos bastidores.
+
+---
+
 ## 🧩 Funcionalidades Gerais
 
 ### 📌 Agendamentos (Em Breve)
@@ -84,38 +93,37 @@ Não há cadastro público aberto. O acesso é controlado via convite:
 ## 🛠️ Tecnologias Utilizadas
 
 ### Back-end
-- **Java 17+**
-- **Spring Boot 3**
+- **Java 11**
+- **Spring Boot 2.7**
 - **Spring Security** (Gerenciamento de acesso avançado)
+- **Spring Async** (Gerenciamento de Threads para e-mails)
 - **JWT** (Access + Refresh Token)
 - **Java Mail Sender** (Envio de e-mails transacionais)
 - **JPA / Hibernate**
-- **PostgreSQL**
+- **PostgreSQL 16**
 - **Docker**
 - **Lombok**
 
 ---
 
-## 🗺️ Linha do Tempo do Desenvolvimento
+## 🗺️ Linha do Tempo e Futuro
 
-- ✅ **Estrutura inicial do projeto**
-- ✅ **Configuração do Spring Boot & Docker**
-- ✅ **Modelagem de Banco de Dados**
-- ✅ **Módulo de Segurança (Auth/Refresh Token)**
-- ✅ **Módulo de Usuários (CRUD Completo)**
-- ✅ **Fluxo de Convites e E-mails Transacionais**
-- ✅ **Funcionalidade "Esqueci Minha Senha" & "Meu Perfil"**
-- 🚧 **Catálogo de Serviços** *(Próximo Passo)*
-- 🚧 **Módulo de Agendamentos**
-- 🔜 **Dashboard inteligente**
-- 🔜 **Integração com WhatsApp (Planejado)**
+### ✅ Concluído
+- Estrutura inicial do projeto (Spring Boot & Docker)
+- Modelagem de Banco de Dados
+- Módulo de Segurança (Auth/Refresh Token)
+- Módulo de Usuários (CRUD Completo)
+- Fluxo de Convites e E-mails Transacionais
+- Funcionalidade "Esqueci Minha Senha" & "Meu Perfil"
+
+### 🚧 Em Desenvolvimento
+- Catálogo de Serviços
+- Módulo de Agendamentos
+- Dashboard inteligente
+
 
 ---
 
-## 🤝 Contribuição
+## 📄 Licença e Direitos
 
-Sugestões e melhorias são bem-vindas.
-
-## 📄 Licença
-
-Este projeto está sob licença **MIT**.
+Este projeto está sob licença **MIT**
