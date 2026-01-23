@@ -1,20 +1,21 @@
 package br.com.barbearia.apibarbearia.auth.controller;
 
 import br.com.barbearia.apibarbearia.auth.dto.*;
-import br.com.barbearia.apibarbearia.auth.entity.TokenBlacklist;
 import br.com.barbearia.apibarbearia.auth.repository.TokenBlacklistRepository;
 import br.com.barbearia.apibarbearia.auth.security.JwtService;
 import br.com.barbearia.apibarbearia.auth.security.LoginRateLimiter;
+import br.com.barbearia.apibarbearia.auth.service.LogoutService;
 import br.com.barbearia.apibarbearia.common.exception.UnauthorizedException;
+import br.com.barbearia.apibarbearia.users.entity.User;
 import br.com.barbearia.apibarbearia.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
-import java.time.Instant;
 import java.util.Map;
 
 @RestController
@@ -27,6 +28,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final LoginRateLimiter rateLimiter;
     private final TokenBlacklistRepository blacklistRepository;
+    private final LogoutService logoutService;
 
     @PostMapping("/login")
     public Object login(@Valid @RequestBody LoginRequest req, HttpServletRequest request) {
@@ -43,17 +45,13 @@ public class AuthController {
 
             rateLimiter.onSuccess(key);
 
-            var user = userRepository.findByEmail(auth.getName())
+            // Busca usuário pelo email (autenticação bem-sucedida)
+            User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new UnauthorizedException("Usuário não encontrado."));
 
-            Map<String, Object> claims = Map.of(
-                    "role", user.getRole().name(),
-                    "userId", user.getId(),
-                    "active", user.isActive()
-            );
-
-            String accessToken = jwtService.generateAccessToken(user.getEmail(), claims);
-            String refreshToken = jwtService.generateRefreshToken(user.getEmail(), claims);
+            // ✅ AGORA: Gera tokens usando o objeto User (JwtService usa ID como subject)
+            String accessToken = jwtService.generateAccessToken(user);
+            String refreshToken = jwtService.generateRefreshToken(user);
 
             RefreshResponse resp = new RefreshResponse();
             resp.token = accessToken;
@@ -76,28 +74,37 @@ public class AuthController {
     public Object refresh(@Valid @RequestBody RefreshRequest req) {
         String refreshToken = req.refreshToken;
 
+        // Verifica se token está na blacklist
         String jti = jwtService.getJti(refreshToken);
         if (blacklistRepository.existsByJti(jti)) {
             throw new UnauthorizedException("Sessão expirada. Faça login novamente.");
         }
 
-        String email = jwtService.getSubject(refreshToken);
+        // ✅ AGORA: O subject do token é o ID (String)
+        String userIdStr = jwtService.getSubject(refreshToken);
+        if (userIdStr == null) {
+            throw new UnauthorizedException("Token inválido.");
+        }
 
-        var user = userRepository.findByEmail(email)
+        // Converte ID String para Long
+        Long userId;
+        try {
+            userId = Long.parseLong(userIdStr);
+        } catch (NumberFormatException e) {
+            throw new UnauthorizedException("ID de usuário inválido no token.");
+        }
+
+        // Busca usuário pelo ID
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("Usuário não encontrado."));
 
         if (!user.isActive()) {
             throw new UnauthorizedException("Usuário desativado.");
         }
 
-        Map<String, Object> claims = Map.of(
-                "role", user.getRole().name(),
-                "userId", user.getId(),
-                "active", user.isActive()
-        );
-
-        String newAccess = jwtService.generateAccessToken(user.getEmail(), claims);
-        String newRefresh = jwtService.generateRefreshToken(user.getEmail(), claims);
+        // ✅ Gera novos tokens usando o objeto User
+        String newAccess = jwtService.generateAccessToken(user);
+        String newRefresh = jwtService.generateRefreshToken(user);
 
         RefreshResponse resp = new RefreshResponse();
         resp.token = newAccess;
@@ -109,29 +116,19 @@ public class AuthController {
         );
     }
 
-    @PostMapping("/logout")
-    public Object logout(@Valid @RequestBody LogoutRequest req) {
-        String token = req.token;
-
-        String jti = jwtService.getJti(token);
-        Instant exp = jwtService.getExpirationInstant(token);
-
-        if (!blacklistRepository.existsByJti(jti)) {
-            blacklistRepository.save(TokenBlacklist.builder()
-                    .jti(jti)
-                    .expiresAt(exp)
-                    .createdAt(Instant.now())
-                    .build());
-        }
-
-        return Map.of("message", "Logout realizado com sucesso.");
-    }
-
     @GetMapping("/me")
     public Map<String, Object> me(Authentication authentication) {
-        String email = authentication.getName();
+        // ✅ AGORA: authentication.getName() retorna o ID (String)
+        String userIdStr = authentication.getName();
 
-        var user = userRepository.findByEmail(email)
+        Long userId;
+        try {
+            userId = Long.parseLong(userIdStr);
+        } catch (NumberFormatException e) {
+            throw new UnauthorizedException("ID de usuário inválido na sessão.");
+        }
+
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("Usuário não encontrado."));
 
         return Map.of(
@@ -142,5 +139,11 @@ public class AuthController {
                 "active", user.isActive(),
                 "mustChangePassword", user.isMustChangePassword()
         );
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(HttpServletRequest request) {
+        logoutService.logout(request);
+        return ResponseEntity.ok(Map.of("message", "Logout realizado com sucesso no backend."));
     }
 }

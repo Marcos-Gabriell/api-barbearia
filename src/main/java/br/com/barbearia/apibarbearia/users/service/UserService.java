@@ -7,16 +7,22 @@ import br.com.barbearia.apibarbearia.notification.email.users.UserEmailNotificat
 import br.com.barbearia.apibarbearia.users.dtos.*;
 import br.com.barbearia.apibarbearia.users.entity.Role.Role;
 import br.com.barbearia.apibarbearia.users.entity.User;
+import br.com.barbearia.apibarbearia.users.entity.UserInvite;
+import br.com.barbearia.apibarbearia.users.repository.UserInviteRepository;
 import br.com.barbearia.apibarbearia.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +30,7 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserInviteRepository inviteRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserEmailNotificationService emailNotificationService;
 
@@ -35,7 +42,12 @@ public class UserService {
                     .stream().map(this::toResponse)
                     .collect(Collectors.toList());
         }
-
+        if (actor == Role.ADMIN) {
+            return userRepository.findAll().stream()
+                    .filter(user -> user.getRole() != Role.DEV)
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+        }
         return userRepository.findAllByRole(Role.STAFF)
                 .stream().map(this::toResponse)
                 .collect(Collectors.toList());
@@ -45,29 +57,157 @@ public class UserService {
         User target = getUser(id);
         Role actor = currentRole();
 
-        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode visualizar usuários do tipo STAFF.");
+        if (actor == Role.ADMIN && target.getRole() == Role.DEV) {
+            throw new BadRequestException("Administrador não pode visualizar usuários DEV.");
+        }
+        return toResponse(target);
+    }
+
+    @Transactional
+    public void inviteUser(InviteUserRequest req) {
+        Role actor = currentRole();
+        String email = normalizeEmail(req.getEmail());
+
+        if (actor == Role.ADMIN && req.getRole() != Role.STAFF) {
+            throw new BadRequestException("Administradores só podem convidar Staff.");
         }
 
-        return toResponse(target);
+        // 1. Verifica se já existe um usuário ATIVO com esse email
+        if (userRepository.existsByEmailAndActiveTrue(email)) {
+            throw new ConflictException("Já existe um usuário ativo com este e-mail.");
+        }
+
+        // 2. Se existe um usuário INATIVO (excluído logicamente), removemos ele para permitir o novo cadastro
+        userRepository.findByEmail(email).ifPresent(existing -> {
+            if (!existing.isActive()) {
+                userRepository.delete(existing);
+                userRepository.flush(); // Força a deleção imediata
+            }
+        });
+
+        // 3. Verifica e limpa convites anteriores para evitar "NonUniqueResultException"
+        List<UserInvite> existingInvites = inviteRepository.findAllByEmail(email);
+
+        // Verifica se existe algum convite válido e não usado
+        boolean hasValidInvite = existingInvites.stream()
+                .anyMatch(inv -> !inv.isUsed() && inv.getExpiresAt().isAfter(Instant.now()));
+
+        if (hasValidInvite) {
+            throw new ConflictException("Já existe um convite pendente e válido para este e-mail.");
+        }
+
+        // Limpa TODOS os convites antigos (expirados ou usados) desse email
+        if (!existingInvites.isEmpty()) {
+            inviteRepository.deleteAll(existingInvites);
+            inviteRepository.flush();
+        }
+
+        // 4. Cria o novo convite
+        String token = UUID.randomUUID().toString();
+
+        UserInvite invite = UserInvite.builder()
+                .email(email)
+                .role(req.getRole())
+                .token(token)
+                .used(false)
+                .createdAt(Instant.now())
+                .expiresAt(Instant.now().plus(24, ChronoUnit.HOURS))
+                .build();
+
+        inviteRepository.save(invite);
+
+        try {
+            emailNotificationService.sendInvite(email, token);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Se falhar o envio, deleta o convite para não ficar "preso"
+            inviteRepository.delete(invite);
+            throw new BadRequestException("Erro ao enviar e-mail de convite.");
+        }
+    }
+
+    public UserInvite validateInviteToken(String token) {
+        UserInvite invite = inviteRepository.findByToken(token)
+                .orElseThrow(() -> new NotFoundException("Convite inválido ou não encontrado."));
+
+        if (invite.isUsed()) {
+            throw new BadRequestException("Este convite já foi utilizado.");
+        }
+
+        if (Instant.now().isAfter(invite.getExpiresAt())) {
+            throw new BadRequestException("O prazo de 24h deste convite expirou.");
+        }
+
+        return invite;
+    }
+
+    @Transactional
+    public UserResponse completeInvite(CompleteInviteRequest req) {
+        UserInvite invite = validateInviteToken(req.getToken());
+
+        if (!req.getPassword().equals(req.getConfirmPassword())) {
+            throw new BadRequestException("As senhas não conferem.");
+        }
+
+        if (req.getPassword().length() < 6 || !req.getPassword().matches(".*\\d.*")) {
+            throw new BadRequestException("A senha deve ter no mínimo 6 caracteres e conter número.");
+        }
+
+        if (userRepository.existsByEmailAndActiveTrue(invite.getEmail())) {
+            throw new ConflictException("Este e-mail já foi cadastrado.");
+        }
+
+        String cleanPhone = null;
+        if (req.getPhone() != null && !req.getPhone().isBlank()) {
+            cleanPhone = req.getPhone().replaceAll("[^0-9]", "");
+            validatePhoneUniqueness(cleanPhone, null);
+        }
+
+        // Remove qualquer resquício de usuário antigo com esse email
+        userRepository.findByEmail(invite.getEmail()).ifPresent(u -> {
+            userRepository.delete(u);
+            userRepository.flush();
+        });
+
+        User newUser = User.builder()
+                .name(req.getName())
+                .email(invite.getEmail())
+                .phone(cleanPhone)
+                .role(invite.getRole())
+                .passwordHash(passwordEncoder.encode(req.getPassword()))
+                .active(true)
+                .mustChangePassword(false)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        User savedUser = userRepository.save(newUser);
+
+        invite.setUsed(true);
+        inviteRepository.save(invite);
+
+        try {
+            emailNotificationService.sendUserCreated(savedUser.getEmail(), savedUser.getName());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return toResponse(savedUser);
     }
 
     public UserWithTempPasswordResponse create(UserCreateRequest req) {
         Role actor = currentRole();
-        String email = normalizeEmail(req.email);
+        String email = normalizeEmail(req.getEmail());
 
-        if (email == null || email.isBlank()) {
-            throw new BadRequestException("E-mail é obrigatório.");
-        }
-
-        if (actor == Role.ADMIN && req.role != Role.STAFF) {
+        if (actor == Role.ADMIN && req.getRole() != Role.STAFF) {
             throw new BadRequestException("Administrador só pode criar usuários do tipo STAFF.");
         }
 
         if (userRepository.existsByEmailAndActiveTrue(email)) {
-            throw new ConflictException("Este e-mail já está em uso por um usuário ativo.");
+            throw new ConflictException("Este e-mail já está em uso.");
         }
 
+        // Limpeza de inativos (igual ao invite)
         userRepository.findByEmail(email).ifPresent(existing -> {
             if (!existing.isActive()) {
                 userRepository.delete(existing);
@@ -78,9 +218,9 @@ public class UserService {
         String temp = generateTempPassword(10);
 
         User saved = userRepository.save(User.builder()
-                .name(req.name)
+                .name(req.getName())
                 .email(email)
-                .role(req.role)
+                .role(req.getRole())
                 .passwordHash(passwordEncoder.encode(temp))
                 .active(true)
                 .mustChangePassword(true)
@@ -89,9 +229,9 @@ public class UserService {
                 .build());
 
         try {
-            emailNotificationService.sendUserCreated(saved.getEmail(), saved.getName(), saved.getEmail(), temp);
+            emailNotificationService.sendUserCreated(saved.getEmail(), saved.getName());
         } catch (Exception e) {
-            System.err.println("Falha ao enviar e-mail de boas-vindas: " + e.getMessage());
+            e.printStackTrace();
         }
 
         return wrapWithTemp(saved, temp);
@@ -101,77 +241,77 @@ public class UserService {
         Role actor = currentRole();
         User target = getUser(id);
 
-        String email = normalizeEmail(req.email);
-        if (email == null || email.isBlank()) {
-            throw new BadRequestException("E-mail é obrigatório.");
-        }
+        String email = normalizeEmail(req.getEmail());
 
         if (userRepository.existsByEmailAndIdNot(email, id)) {
             throw new BadRequestException("Este e-mail já está em uso.");
         }
 
-        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode editar usuários do tipo STAFF.");
+        if (actor == Role.ADMIN && target.getRole() == Role.DEV) {
+            throw new BadRequestException("Sem permissão para editar DEV.");
         }
 
-        if (actor == Role.ADMIN && req.role != Role.STAFF) {
-            throw new BadRequestException("Administrador não pode alterar o perfil de usuário.");
+        if (actor == Role.ADMIN && req.getRole() != Role.STAFF) {
+            throw new BadRequestException("Administrador não pode elevar privilégios.");
         }
 
-        String actorEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-        boolean updatedBySelf = actorEmail != null && actorEmail.equalsIgnoreCase(target.getEmail());
+        if (req.getPhone() != null) {
+            String cleanPhone = req.getPhone().replaceAll("[^0-9]", "");
+            if (!cleanPhone.equals(target.getPhone())) {
+                validatePhoneUniqueness(cleanPhone, target.getId());
+                target.setPhone(cleanPhone);
+            }
+        }
 
-        target.setName(req.name);
+        boolean updatedBySelf = currentUserId().equals(target.getId());
+
+        target.setName(req.getName());
         target.setEmail(email);
         target.setUpdatedAt(Instant.now());
 
         if (actor == Role.DEV) {
-            target.setRole(req.role);
+            target.setRole(req.getRole());
         }
 
         User saved = userRepository.save(target);
 
-        if (updatedBySelf) {
-            emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
-        } else {
-            emailNotificationService.sendUserUpdatedByAdmin(saved.getEmail(), saved.getName(), actorEmail, actor.name());
+        try {
+            if (updatedBySelf) {
+                emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
+            } else {
+                User adminUser = getUser(currentUserId());
+                emailNotificationService.sendUserUpdatedByAdmin(
+                        saved.getEmail(), saved.getName(), saved.getEmail(),
+                        saved.getRole().name(), adminUser.getEmail(), actor.name()
+                );
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return toResponse(saved);
     }
 
-    public UserWithTempPasswordResponse resetPassword(Long id) {
-        Role actor = currentRole();
-        User target = getUser(id);
-
-        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode resetar senha de usuários do tipo STAFF.");
-        }
-
-        String temp = generateTempPassword(10);
-
-        target.setPasswordHash(passwordEncoder.encode(temp));
-        target.setMustChangePassword(true);
-        target.setUpdatedAt(Instant.now());
-
-        userRepository.save(target);
-
-        // ✅ não pode quebrar
-        emailNotificationService.sendUserCreated(target.getEmail(), target.getName(), target.getEmail(), temp);
-
-        return wrapWithTemp(target, temp);
-    }
-
-    // ✅ HARD DELETE: apaga do banco de verdade
     public UserResponse deleteAndReturn(Long id) {
         Role actor = currentRole();
         User target = getUser(id);
 
         if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode excluir usuários do tipo STAFF.");
+            throw new BadRequestException("Administrador só pode excluir STAFF.");
         }
 
+        String targetEmail = target.getEmail();
+        String targetName = target.getName();
+        User adminUser = getUser(currentUserId());
+
         userRepository.delete(target);
+
+        try {
+            emailNotificationService.sendUserDeletedByAdmin(targetEmail, targetName, adminUser.getEmail());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         return toResponse(target);
     }
 
@@ -180,7 +320,7 @@ public class UserService {
         User target = getUser(id);
 
         if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode ativar usuários do tipo STAFF.");
+            throw new BadRequestException("Administrador só pode ativar STAFF.");
         }
 
         target.setActive(true);
@@ -188,11 +328,190 @@ public class UserService {
         return toResponse(userRepository.save(target));
     }
 
-    // ---------------- helpers ----------------
+
+    public UserResponse updateMyProfile(User user, UpdateMyProfileRequest req) {
+        String currentEmail = user.getEmail();
+        String newEmailRaw = req.getEmail().toLowerCase().trim();
+
+        boolean nameChanged = !user.getName().equals(req.getName());
+        boolean emailChanged = !currentEmail.equalsIgnoreCase(newEmailRaw);
+
+        String newPhone = req.getPhone() != null ? req.getPhone().replaceAll("[^0-9]", "") : null;
+        String oldPhone = user.getPhone();
+        boolean phoneChanged = false;
+
+        if (newPhone != null && !newPhone.isBlank()) {
+            if (!newPhone.equals(oldPhone)) {
+                validatePhoneUniqueness(newPhone, user.getId());
+                user.setPhone(newPhone);
+                phoneChanged = true;
+            }
+        }
+
+        if (nameChanged) user.setName(req.getName());
+
+        if (emailChanged) {
+            if (userRepository.existsByEmailAndIdNot(newEmailRaw, user.getId())) {
+                throw new ConflictException("E-mail já em uso.");
+            }
+            String code = String.valueOf(new SecureRandom().nextInt(900000) + 100000);
+            user.setPendingEmail(newEmailRaw);
+            user.setEmailVerificationCode(code);
+            user.setEmailVerificationExpiresAt(Instant.now().plusSeconds(300));
+            try {
+                emailNotificationService.sendVerificationCode(newEmailRaw, user.getName(), code);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        user.setUpdatedAt(Instant.now());
+        User saved = userRepository.save(user);
+
+        if ((nameChanged || phoneChanged) && !emailChanged) {
+            try {
+                emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return toResponse(saved);
+    }
+
+    public User confirmEmailUpdate(User user, String code) {
+        if (user.getPendingEmail() == null || !user.getEmailVerificationCode().equals(code)) {
+            throw new BadRequestException("Código inválido ou sem solicitação.");
+        }
+        if (Instant.now().isAfter(user.getEmailVerificationExpiresAt())) {
+            throw new BadRequestException("Código expirado.");
+        }
+
+        user.setEmail(user.getPendingEmail());
+        user.setPendingEmail(null);
+        user.setEmailVerificationCode(null);
+        user.setEmailVerificationExpiresAt(null);
+        user.setTokenInvalidationTimestamp(Instant.now());
+
+        return userRepository.save(user);
+    }
+
+    public void changePassword(User user, ChangePasswordRequest req) {
+        if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Senha atual incorreta.");
+        }
+        if (passwordEncoder.matches(req.getNewPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Nova senha deve ser diferente da atual.");
+        }
+        if (!req.getNewPassword().equals(req.getConfirmNewPassword())) {
+            throw new BadRequestException("Confirmação de senha incorreta.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setMustChangePassword(false);
+        user.setTokenInvalidationTimestamp(Instant.now());
+        userRepository.save(user);
+
+        try {
+            emailNotificationService.sendPasswordChanged(user.getEmail(), user.getName());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public UserWithTempPasswordResponse resetPassword(Long id) {
+        Role actor = currentRole();
+        User target = getUser(id);
+
+        if (actor == Role.ADMIN && target.getRole() != Role.STAFF) {
+            throw new BadRequestException("Sem permissão.");
+        }
+
+        String temp = generateTempPassword(10);
+        target.setPasswordHash(passwordEncoder.encode(temp));
+        target.setMustChangePassword(true);
+        target.setTokenInvalidationTimestamp(Instant.now());
+        userRepository.save(target);
+
+        try {
+            User adminUser = getUser(currentUserId());
+            emailNotificationService.sendPasswordResetByAdmin(target.getEmail(), target.getName(), temp, adminUser.getEmail());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return wrapWithTemp(target, temp);
+    }
+
+    public void requestPasswordReset(ForgotPasswordRequest req) {
+        String email = normalizeEmail(req.getEmail());
+        Optional<User> userOptional = userRepository.findByEmail(email);
+
+        if (userOptional.isEmpty()) throw new NotFoundException("Usuário não encontrado.");
+        User user = userOptional.get();
+        if (!user.isActive()) throw new BadRequestException("Usuário inativo.");
+
+        String code = String.valueOf(new SecureRandom().nextInt(900000) + 100000);
+        user.setEmailVerificationCode(code);
+        user.setEmailVerificationExpiresAt(Instant.now().plusSeconds(300));
+        userRepository.save(user);
+
+        try {
+            emailNotificationService.sendPasswordResetCode(user.getEmail(), user.getName(), code);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void validateRecoveryCode(String email, String code) {
+        User user = userRepository.findByEmail(normalizeEmail(email))
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
+
+        if (user.getEmailVerificationCode() == null || !user.getEmailVerificationCode().equals(code)) {
+            throw new BadRequestException("Código inválido.");
+        }
+        if (Instant.now().isAfter(user.getEmailVerificationExpiresAt())) {
+            throw new BadRequestException("Código expirado.");
+        }
+    }
+
+    public void completePasswordReset(CompletePasswordResetRequest req) {
+        User user = userRepository.findByEmail(normalizeEmail(req.getEmail()))
+                .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
+
+        validateRecoveryCode(req.getEmail(), req.getCode());
+
+        if (!req.getNewPassword().equals(req.getConfirmNewPassword())) {
+            throw new BadRequestException("Senhas não conferem.");
+        }
+        if (passwordEncoder.matches(req.getNewPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Nova senha não pode ser igual à atual.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setMustChangePassword(false);
+        user.setEmailVerificationCode(null);
+        user.setTokenInvalidationTimestamp(Instant.now());
+        userRepository.save(user);
+    }
+
+    private void validatePhoneUniqueness(String phone, Long userIdToIgnore) {
+        String cleanPhone = phone.replaceAll("[^0-9]", "");
+
+        if (cleanPhone.isEmpty()) return;
+
+        Optional<User> existingUser = userRepository.findByPhone(cleanPhone);
+
+        if (existingUser.isPresent()) {
+            if (userIdToIgnore != null && existingUser.get().getId().equals(userIdToIgnore)) {
+                return;
+            }
+            throw new ConflictException("Este número de telefone já está em uso por outro usuário.");
+        }
+    }
 
     private User getUser(Long id) {
-        return userRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
+        return userRepository.findById(id).orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
     }
 
     private String normalizeEmail(String email) {
@@ -202,33 +521,37 @@ public class UserService {
     private Role currentRole() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) throw new BadRequestException("Sessão inválida.");
-
         boolean isDev = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_DEV"));
         if (isDev) return Role.DEV;
-
         boolean isAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
         if (isAdmin) return Role.ADMIN;
-
         return Role.STAFF;
+    }
+
+    private Long currentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        try { return Long.parseLong(auth.getName()); } catch (Exception e) { return null; }
     }
 
     private UserResponse toResponse(User user) {
         UserResponse r = new UserResponse();
-        r.id = user.getId();
-        r.name = user.getName();
-        r.email = user.getEmail();
-        r.role = user.getRole();
-        r.active = user.isActive();
-        r.mustChangePassword = user.isMustChangePassword();
-        r.createdAt = user.getCreatedAt();
-        r.updatedAt = user.getUpdatedAt();
+        r.setId(user.getId());
+        r.setName(user.getName());
+        r.setEmail(user.getEmail());
+        r.setPhone(user.getPhone());
+        r.setRole(user.getRole());
+        r.setActive(user.isActive());
+        r.setMustChangePassword(user.isMustChangePassword());
+        r.setCreatedAt(user.getCreatedAt());
+        r.setUpdatedAt(user.getUpdatedAt());
+        r.setPendingEmail(user.getPendingEmail());
         return r;
     }
 
     private UserWithTempPasswordResponse wrapWithTemp(User user, String temp) {
         UserWithTempPasswordResponse resp = new UserWithTempPasswordResponse();
-        resp.user = toResponse(user);
-        resp.temporaryPassword = temp;
+        resp.setUser(toResponse(user));
+        resp.setTemporaryPassword(temp);
         return resp;
     }
 
@@ -236,7 +559,6 @@ public class UserService {
         final String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#";
         SecureRandom random = new SecureRandom();
         StringBuilder sb = new StringBuilder(length);
-
         for (int i = 0; i < length; i++) {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }

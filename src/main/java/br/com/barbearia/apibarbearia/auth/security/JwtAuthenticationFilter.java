@@ -1,10 +1,12 @@
 package br.com.barbearia.apibarbearia.auth.security;
 
-import br.com.barbearia.apibarbearia.auth.repository.TokenBlacklistRepository;
-import br.com.barbearia.apibarbearia.auth.service.CustomUserDetailsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -15,74 +17,75 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final CustomUserDetailsService userDetailsService;
-    private final TokenBlacklistRepository blacklistRepository;
+    private final UserDetailsService userDetailsService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain
+    ) throws ServletException, IOException {
 
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            chain.doFilter(request, response);
+        final String authHeader = request.getHeader("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
             return;
         }
 
-        String token = header.substring(7).trim();
+        final String jwt = authHeader.substring(7);
 
-        // ✅ Só valida token aqui. NÃO envolve chain.doFilter em try/catch genérico.
+        // Extrai o ID do usuário (subject) e o e-mail
+        final String userId = jwtService.getSubject(jwt);
+
+        // Opcional: extrair email se sua lógica de load depender disso,
+        // mas como seu UserDetails usa ID, focamos no userId.
+        // final String userEmail = jwtService.getUserEmail(jwt);
+
+        // Se não conseguiu extrair o ID, segue sem autenticar
+        if (userId == null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Se já está autenticado no contexto, segue
+        if (SecurityContextHolder.getContext().getAuthentication() != null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         try {
-            String jti = jwtService.getJti(token);
+            // Carrega o UserDetails usando o ID (Subject do token)
+            // Aqui é importante que seu UserDetailsService busque pelo ID se receber um número string
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userId);
 
-            if (jti != null && blacklistRepository.existsByJti(jti)) {
-                unauthorized(response, "Sessão expirada. Faça login novamente.");
-                return;
-            }
+            // Valida o token passando o UserDetails recuperado do banco
+            // O JwtService fará o cast para User entity e checará o timestamp
+            if (jwtService.isTokenValid(jwt, userDetails)) {
 
-            String email = jwtService.getSubject(token);
-
-            if (email == null || email.isBlank()) {
-                SecurityContextHolder.clearContext();
-                unauthorized(response, "Token inválido ou expirado. Faça login novamente.");
-                return;
-            }
-
-            if (SecurityContextHolder.getContext().getAuthentication() == null) {
-                var userDetails = userDetailsService.loadUserByUsername(email);
-
-                var auth = new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities()
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
                 );
 
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(auth);
-            }
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-        } catch (RuntimeException ex) {
-            // ✅ Aqui você pega apenas erros de token/parse/expiração que seu jwtService lançar.
-            // (Se seu jwtService lança outras exceções, ajuste pra exceções específicas de JWT)
-            SecurityContextHolder.clearContext();
-            unauthorized(response, "Token inválido ou expirado. Faça login novamente.");
-            return;
+                // Autentica o usuário no contexto do Spring Security
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        } catch (Exception e) {
+            // Log discreto para não poluir em caso de token expirado comum,
+            // mas útil para debug se for erro de banco/lógica
+            log.debug("Falha na autenticação JWT: {}", e.getMessage());
         }
 
-        // ✅ IMPORTANTÍSSIMO: fora do try/catch
-        chain.doFilter(request, response);
-    }
-
-    private void unauthorized(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"message\":\"" + escapeJson(message) + "\"}");
-    }
-
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        filterChain.doFilter(request, response);
     }
 }

@@ -1,17 +1,24 @@
 package br.com.barbearia.apibarbearia.users.dtos;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChangePasswordRequest {
 
     @NotBlank(message = "Senha atual é obrigatória.")
-    public String currentPassword;
+    private String currentPassword;
 
     @NotBlank(message = "Nova senha é obrigatória.")
     @Size(min = 5, max = 60, message = "A senha deve ter entre 5 e 60 caracteres.")
-    public String newPassword;
+    private String newPassword;
 
     @NotBlank(message = "Confirmação da senha é obrigatória.")
-    public String confirmPassword;
+    private String confirmNewPassword;
 }

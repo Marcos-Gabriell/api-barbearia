@@ -1,9 +1,9 @@
 package br.com.barbearia.apibarbearia.notification.email.template.users;
 
 import br.com.barbearia.apibarbearia.notification.email.template.EmailLayout;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+@Component
 public class UserUpdatedBySelfTemplate {
 
     private final EmailLayout layout;
@@ -13,15 +13,21 @@ public class UserUpdatedBySelfTemplate {
     }
 
     public String subject() {
-        return "Perfil atualizado";
+        return "Segurança: Dados atualizados";
     }
 
     public String html(String nome) {
-        String title = "Perfil Atualizado ✅";
-        String subtitle = "Olá " + layout.escape(nome) + ", confirmamos a alteração dos seus dados.";
-        String content = layout.note("Se você realizou essa alteração, nenhuma ação adicional é necessária.");
+        String content =
+                layout.paragraph("Olá, " + nome + ".") +
+                        layout.paragraph("Confirmamos que os dados do seu perfil (Nome ou E-mail) foram atualizados com sucesso.") +
+                        layout.warning("Se não foi você, entre em contato com o suporte imediatamente.");
 
-        String ctaUrl = layout.frontendUrl() + "/perfil";
-        return layout.baseTemplate(title, subtitle, content, "Ver Meu Perfil", ctaUrl);
+        return layout.baseTemplate(
+                "Dados Atualizados",
+                "Alteração realizada com sucesso",
+                content,
+                "Acessar Conta",
+                layout.frontendUrl() + "/login"
+        );
     }
 }

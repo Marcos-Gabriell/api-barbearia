@@ -84,4 +84,13 @@ public class UserController {
                 "data", user
         ));
     }
+
+    @PostMapping("/invite")
+    @PreAuthorize("hasAnyRole('DEV','ADMIN')") // Só Admin/Dev envia convite
+    public ResponseEntity<?> sendInvite(@Valid @RequestBody InviteUserRequest req) {
+        service.inviteUser(req);
+        return ResponseEntity.ok(Map.of(
+                "message", "Convite enviado com sucesso para " + req.getEmail()
+        ));
+    }
 }

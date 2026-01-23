@@ -1,9 +1,16 @@
 package br.com.barbearia.apibarbearia.users.dtos;
 
 import br.com.barbearia.apibarbearia.users.entity.Role.Role;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import javax.validation.constraints.*;
 
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserCreateRequest {
 
     @NotBlank(message = "Nome é obrigatório.")

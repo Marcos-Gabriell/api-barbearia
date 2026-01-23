@@ -1,9 +1,9 @@
 package br.com.barbearia.apibarbearia.notification.email.template.users;
 
 import br.com.barbearia.apibarbearia.notification.email.template.EmailLayout;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+@Component
 public class UserUpdatedByAdminTemplate {
 
     private final EmailLayout layout;
@@ -13,19 +13,26 @@ public class UserUpdatedByAdminTemplate {
     }
 
     public String subject() {
-        return "Cadastro atualizado";
+        return "Seus dados de perfil foram alterados";
     }
 
-    public String html(String nome, String adminName, String adminRole) {
-        String title = "Cadastro Atualizado 🛡️";
-        String subtitle = "Olá " + layout.escape(nome) + ", seu cadastro foi atualizado por um administrador.";
-
+    public String html(String userName, String userEmail, String userRole, String adminName, String adminRole) {
         String content =
-                layout.infoRow("Responsável", layout.escape(adminName)) +
-                        layout.infoRow("Cargo", layout.escape(adminRole)) +
-                        layout.note("Caso não reconheça esta alteração, entre em contato com o suporte.");
+                layout.paragraph("Seus dados cadastrais foram atualizados administrativamente.") +
+                        layout.infoRow("RESPONSÁVEL", layout.escape(adminName) + " (" + layout.escape(adminRole) + ")") +
+                        "<hr style='border:0; border-top:1px dashed #e2e8f0; margin:15px 0;'>" +
+                        layout.paragraph("Como seus dados estão agora:") +
+                        layout.infoRow("NOME", layout.escape(userName)) +
+                        layout.infoRow("E-MAIL", layout.escape(userEmail)) +
+                        layout.infoRow("PERMISSÃO", layout.escape(userRole)) +
+                        layout.note("Caso note algum erro, contate o administrador.");
 
-        String ctaUrl = layout.frontendUrl() + "/login";
-        return layout.baseTemplate(title, subtitle, content, "Acessar Conta", ctaUrl);
+        return layout.baseTemplate(
+                "Perfil Atualizado",
+                "Confira as alterações realizadas",
+                content,
+                "Ver Meu Perfil",
+                layout.frontendUrl() + "/perfil"
+        );
     }
 }

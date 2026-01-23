@@ -1,9 +1,9 @@
 package br.com.barbearia.apibarbearia.notification.email.template.users;
 
 import br.com.barbearia.apibarbearia.notification.email.template.EmailLayout;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+@Component
 public class UserCreatedTemplate {
 
     private final EmailLayout layout;
@@ -13,26 +13,33 @@ public class UserCreatedTemplate {
     }
 
     public String subject() {
-        return "Bem-vindo à " + layout.appName() + " - Acesso ao Sistema";
+        return "Bem-vindo à " + layout.appName() + "! ✂️";
     }
 
-    public String html(String nome, String email, String tempPassword) {
-        // Título e Subtítulo usando o escape do layout
-        String title = "Bem-vindo(a), " + layout.escape(nome) + "! ✂️";
-        String subtitle = "Sua conta na " + layout.escape(layout.appName())
-                + " foi criada com sucesso. Utilize os dados abaixo para acessar.";
+    public String html(String nome) {
 
-        // Construção do conteúdo central
         String content =
-                layout.infoRow("E-MAIL DE LOGIN", layout.escape(email)) +
-                        layout.tempPasswordBox(tempPassword) +
-                        "<div style='margin-top:20px;'></div>" +
-                        layout.warning("⚠️ AÇÃO NECESSÁRIA: Por segurança, o sistema exigirá que você cadastre uma nova senha pessoal logo após o primeiro acesso.");
+                // Boas-vindas
+                layout.paragraph("Sua conta foi configurada e ativada com sucesso! Ficamos muito felizes em ter você na equipe.") +
+                        layout.paragraph("Você já pode acessar o sistema utilizando o e-mail e a senha que você acabou de definir.") +
 
-        // URL de redirecionamento para o login
-        String ctaUrl = layout.frontendUrl() + "/login";
+                        // Espaçamento visual (se seu layout suportar tags HTML básicas dentro do parágrafo, senão use parágrafos vazios)
+                        "<br>" +
 
-        // Retorna o template base unificado
-        return layout.baseTemplate(title, subtitle, content, "Acessar Sistema", ctaUrl);
+                        // Dicas de Segurança
+                        layout.warning("Dicas importantes de Segurança:") +
+                        "<ul style=\"color: #6b7280; font-size: 14px; padding-left: 20px; margin-top: 5px;\">" +
+                        "<li>Nunca compartilhe sua senha com terceiros;</li>" +
+                        "<li>Nossa equipe nunca solicitará sua senha por e-mail ou telefone;</li>" +
+                        "<li>Sempre faça <b>Logout</b> ao acessar de computadores compartilhados.</li>" +
+                        "</ul>";
+
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome) + "!",
+                "Seja muito bem-vindo(a)!",
+                content,
+                "Acessar Sistema",
+                layout.frontendUrl() + "/login"
+        );
     }
 }

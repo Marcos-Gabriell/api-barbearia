@@ -1,10 +1,9 @@
 package br.com.barbearia.apibarbearia.notification.email.template.users;
 
-
 import br.com.barbearia.apibarbearia.notification.email.template.EmailLayout;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
+@Component
 public class PasswordChangedTemplate {
 
     private final EmailLayout layout;
@@ -14,19 +13,22 @@ public class PasswordChangedTemplate {
     }
 
     public String subject() {
-        return "Senha alterada com sucesso";
+        return "Segurança: Senha alterada com sucesso";
     }
 
     public String html(String nome) {
-        String title = "Senha alterada ✅";
-        String subtitle = "Olá " + layout.escape(nome) + ", sua senha foi atualizada com sucesso.";
-
         String content =
-                layout.note("Se você realizou essa alteração, nenhuma ação adicional é necessária.") +
-                        "<div style='margin-top:12px;'></div>" +
-                        layout.warning("🔐 Dica de segurança: se você não reconhece essa alteração, entre em contato com o suporte imediatamente.");
+                layout.paragraph("Olá, " + nome + ".") +
+                        layout.paragraph("Confirmamos que sua senha foi alterada recentemente.") +
+                        layout.paragraph("Se foi você, pode ignorar este e-mail.") +
+                        layout.warning("Se NÃO foi você, recupere sua conta agora mesmo.");
 
-        String ctaUrl = layout.frontendUrl() + "/login";
-        return layout.baseTemplate(title, subtitle, content, "Acessar o sistema", ctaUrl);
+        return layout.baseTemplate(
+                "Senha Alterada",
+                "Aviso de segurança da sua conta",
+                content,
+                "Recuperar Minha Conta",
+                layout.frontendUrl() + "/recuperar-senha"
+        );
     }
 }
