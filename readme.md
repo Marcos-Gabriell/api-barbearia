@@ -1,138 +1,92 @@
 # 💈 Sistema Inteligente de Gerenciamento e Agendamentos para Barbearia (Back-end)
 
-Backend de um sistema **inteligente e estratégico** de gerenciamento e agendamentos para barbearias, projetado para organizar a operação diária, otimizar o uso de dados e apoiar o crescimento do negócio com decisões mais eficientes.
+Backend de um sistema **inteligente e estratégico** de gerenciamento e agendamentos para barbearias, projetado para organizar a operação diária, otimizar o uso de dados e apoiar o crescimento do negócio.
 
-> 🚧 **Projeto em desenvolvimento**  
-> Este repositório representa **exclusivamente o back-end da aplicação**.  
-> O **front-end será desenvolvido com Angular 19**.
+> 🚧 **Projeto em desenvolvimento**
+> Este repositório contém o **back-end (API)**.
+> O front-end está sendo desenvolvido em **Angular 19**.
+
+---
+
+## 📍 Status Atual do Projeto: Fase de Fundação Concluída
+
+Estamos no estágio de **Consolidação da Segurança e Gestão de Identidade**.
+Acabamos de finalizar a refatoração completa do sistema de autenticação, implementando fluxos seguros de convite, recuperação de conta e hierarquia de permissões.
+
+**O que foi entregue recentemente:**
+- ✅ Sistema de Autenticação Robusto (Token + Refresh Token)
+- ✅ Gestão de Usuários por Convite (E-mail)
+- ✅ Painel "Meu Perfil" (Auto-gestão de dados)
+- ✅ Hierarquia de Acesso (RBAC)
 
 ---
 
 ## 🎯 Objetivo do Projeto
 
-Criar uma **API moderna, segura e escalável** que permita à barbearia:
-
-- Controlar totalmente seus agendamentos
-- Oferecer agendamento online simples para clientes
-- Organizar serviços, horários e equipe
-- Utilizar dados operacionais para melhorar performance
-- Crescer com base em informações reais e estratégicas
-
-O sistema foi pensado para ser **100% orientado a dados**, permitindo evolução contínua conforme o uso.
+Criar uma **API moderna, segura e escalável** que permita à barbearia controlar agendamentos, equipe e métricas, sendo **100% orientada a dados**.
 
 ---
 
-## 🧩 Visão Geral do Sistema
+## 🔐 Segurança e Gestão de Identidade
 
-O sistema funciona em dois grandes fluxos integrados:
+O sistema conta agora com um módulo de segurança avançado:
 
-### 🔒 Fluxo Interno (Barbearia)
-- Acesso autenticado para administradores e equipe
-- Gestão completa da agenda
-- Organização de serviços e horários
-- Dashboard inteligente e relatórios estratégicos
+### 🛡️ Autenticação e Sessão
+- **JWT & Refresh Token:** Implementação completa de tokens de acesso com rotação de refresh token para maior segurança.
+- **Validação de Token:** Middleware de segurança para validação de integridade e expiração.
 
-### 🌐 Fluxo Externo (Cliente)
-- Agendamento rápido e intuitivo
-- Confirmações e lembretes automáticos
-- Cancelamento facilitado e seguro
+### 👥 Hierarquia de Papéis (RBAC)
+O sistema possui 3 níveis de acesso bem definidos:
 
----
+1.  **💻 DEV (Supremo):**
+    - Acesso irrestrito.
+    - Único capaz de criar administradores.
+2.  **👑 ADMIN:**
+    - Gerencia a barbearia.
+    - Cria e gerencia membros da equipe (STAFF).
+    - Acesso a relatórios e configurações.
+3.  **✂️ STAFF:**
+    - Visualiza agenda e realiza atendimentos.
+    - Dados limitados à operação diária.
 
-## 👥 Tipos de Usuário
+### 📩 Fluxo de Cadastro e Convites
+Não há cadastro público aberto. O acesso é controlado via convite:
+1.  Admin envia um **convite por e-mail** para o novo usuário.
+2.  O e-mail contém um **Token de Ativação** (validade de 24h).
+3.  O usuário acessa o link, define sua senha e ativa a conta.
 
-### 👑 Administrador (ADMIN)
-- Controle total do sistema
-- Gestão de usuários
-- Configuração de serviços e horários
-- Acesso completo a dashboards e relatórios
-
-### ✂️ Staff (STAFF)
-- Visualização da agenda
-- Acompanhamento dos agendamentos
-- Cancelamento e finalização de atendimentos
-- Comunicação com clientes
-
----
-
-## 🗓️ Funcionalidades Principais
-
-### 📌 Agendamentos
-- Visualização da agenda por:
-    - Dia
-    - Semana
-    - Período personalizado
-- Criação manual de agendamentos
-- Cancelamento e finalização de atendimentos
-- Bloqueio de datas e faixas de horário específicas
-
-### 🧾 Catálogo de Serviços
-- Cadastro de serviços com:
-    - Nome
-    - Duração
-    - Preço
-- Ativação e desativação de serviços
-- Definição de horários disponíveis por serviço
+### 👤 Área do Usuário (Meus Dados)
+- **Auto-gestão:** O usuário logado pode alterar seu próprio nome, telefone, e-mail e senha.
+- **Segurança:** Toda alteração de dados sensíveis dispara uma **notificação de segurança por e-mail**.
+- **Recuperação:** Fluxo de "Esqueci minha senha" com envio de código de verificação.
 
 ---
 
-## 📊 Dashboard Inteligente
+## ⚡ Performance e Assincronicidade (`@EnableAsync`)
 
-Dashboard desenvolvido para **análise estratégica**, contendo:
+Para garantir que o sistema suporte múltiplos usuários simultâneos sem travamentos, utilizamos a annotation `@EnableAsync` para processamento paralelo:
 
-- Total de agendamentos do dia
-- Serviços mais realizados
-- Quantidade de cancelamentos
-- Visão geral da operação
-
-> ⚠️ O sistema **não possui módulo financeiro**.  
-> O foco é **controle de agenda e performance operacional**.
+- **E-mails em Background:** O envio de e-mails (convites, recuperações, notificações) é processado em uma thread separada.
+- **Benefício:** Isso impede que a API fique "esperando" o servidor de e-mail responder. O usuário recebe a confirmação na tela instantaneamente, enquanto o sistema trabalha nos bastidores.
 
 ---
 
-## 📈 Relatórios
+## 🧩 Funcionalidades Gerais
 
-Relatórios detalhados de agendamentos por:
+### 📌 Agendamentos (Em Breve)
+- Visualização de agenda (Dia/Semana).
+- Cancelamento seguro via link (Tokenizado).
+- Bloqueio de horários.
 
-- Dia
-- Semana
-- Mês
-- Ano
+### 📊 Dashboard e Relatórios
+- Análise de performance e serviços mais vendidos.
 
-Esses dados permitem identificar padrões, horários mais movimentados e oportunidades de melhoria.
-
----
-
-## ✉️ Comunicação por E-mail
-
-O sistema enviará e-mails automáticos para clientes e barbeiros:
-
-- Confirmação do agendamento
-- Notificação para o barbeiro
-- Lembrete ao cliente **30 minutos antes do atendimento**
-- Notificação de cancelamento
-
----
-
-## 🔗 Cancelamento via Link Seguro
-
-- O **link de cancelamento** será enviado **junto com o e-mail de confirmação do agendamento**
-- Link único e seguro, vinculado ao agendamento
-- O cliente poderá cancelar **até 30 minutos antes do horário marcado**
-- Após o cancelamento:
-    - O barbeiro será notificado
-    - O cliente poderá entrar em contato via WhatsApp, se desejar
-
-O barbeiro também poderá cancelar o agendamento, e o cliente será informado com a mensagem definida pelo profissional.
-
----
-
-## 🔐 Segurança e Autenticação
-
-- Autenticação com **JWT**
-- Controle de acesso por perfil (ADMIN / STAFF)
-- Proteção de rotas com **Spring Security**
-- Arquitetura preparada para crescimento e escalabilidade
+### ✉️ Notificações
+- Padronização de templates de e-mail (HTML) para:
+    - Boas-vindas/Convite.
+    - Recuperação de senha.
+    - Aviso de alteração de dados.
+    - Agendamentos (Futuro).
 
 ---
 
@@ -140,62 +94,36 @@ O barbeiro também poderá cancelar o agendamento, e o cliente será informado c
 
 ### Back-end
 - **Java 11**
-- **Spring Boot**
-- **Spring Security**
-- **JWT (JSON Web Token)**
+- **Spring Boot 2.7**
+- **Spring Security** (Gerenciamento de acesso avançado)
+- **Spring Async** (Gerenciamento de Threads para e-mails)
+- **JWT** (Access + Refresh Token)
+- **Java Mail Sender** (Envio de e-mails transacionais)
 - **JPA / Hibernate**
-- **PostgreSQL**
+- **PostgreSQL 16**
 - **Docker**
-- **Maven**
-
-### Front-end (Planejado)
-- **Angular 19**
+- **Lombok**
 
 ---
 
-## 🐳 Containerização
+## 🗺️ Linha do Tempo e Futuro
 
-O projeto utiliza **Docker** para:
-- Padronização do ambiente
-- Facilidade de execução
-- Integração com banco PostgreSQL
+### ✅ Concluído
+- Estrutura inicial do projeto (Spring Boot & Docker)
+- Modelagem de Banco de Dados
+- Módulo de Segurança (Auth/Refresh Token)
+- Módulo de Usuários (CRUD Completo)
+- Fluxo de Convites e E-mails Transacionais
+- Funcionalidade "Esqueci Minha Senha" & "Meu Perfil"
 
----
+### 🚧 Em Desenvolvimento
+- Catálogo de Serviços
+- Módulo de Agendamentos
+- Dashboard inteligente
 
-## 🗺️ Linha do Tempo do Desenvolvimento
-
-- ✅ Estrutura inicial do projeto
-- ✅ Configuração do Spring Boot
-- ✅ Autenticação e autorização (JWT + Security)
-- ✅ Modelagem de usuários e papéis
-- 🚧 Módulo de agendamentos
-- 🚧 Catálogo de serviços
-- 🚧 Dashboard inteligente
-- 🚧 Relatórios estratégicos
-- 🔜 Envio de e-mails
-- 🔜 Desenvolvimento do front-end Angular 19
 
 ---
 
-## 📌 Status do Projeto
+## 📄 Licença e Direitos
 
-🚧 **Em desenvolvimento ativo**
-
-O sistema está sendo construído com foco em:
-- Organização
-- Performance
-- Inteligência de dados
-- Evolução contínua do negócio
-
----
-
-## 🤝 Contribuição
-
-Sugestões e melhorias são bem-vindas.  
-Pull requests e issues podem ser abertos conforme a evolução do projeto.
-
----
-
-## 📄 Licença
-
-Este projeto está sob licença **MIT**.
+Este projeto está sob licença **MIT**
