@@ -12,24 +12,52 @@ public class CatalogCreatedTemplate {
         this.layout = layout;
     }
 
-    public String subject() {
-        return "Novo serviço disponível no catálogo";
+    public String htmlForAuthor(String nome, String serviceName, int duration, String price) {
+        String content = layout.paragraph("O serviço foi criado e salvo com sucesso no sistema.") +
+                "<br>" +
+                layout.infoRow("Serviço", serviceName) +
+                layout.infoRow("Preço", price) +
+                layout.infoRow("Duração", duration + " min");
+
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Serviço criado com sucesso! ✅",
+                content,
+                "Ver no Catálogo",
+                layout.frontendUrl() + "/catalogo"
+        );
     }
 
-    public String html(String nome, String serviceName, int durationMinutes, String price, String createdBy) {
-        String title = "Novo serviço no catálogo ✅";
-        String subtitle = "Olá " + layout.escape(nome) + ", um novo serviço foi adicionado ao catálogo da " + layout.escape(layout.appName()) + ".";
+    public String htmlForResponsible(String nome, String serviceName, int duration, String price, String createdBy) {
+        String content = layout.paragraph("Você foi incluído como responsável técnico por este novo serviço.") +
+                "<br>" +
+                layout.infoRow("Serviço", serviceName) +
+                layout.infoRow("Preço", price) +
+                layout.infoRow("Duração", duration + " min") +
+                "<br>" +
+                layout.note("Criado por: " + createdBy);
 
-        String content =
-                layout.infoRow("SERVIÇO", layout.escape(serviceName)) +
-                        layout.infoRow("DURAÇÃO", layout.escape(durationMinutes + " min")) +
-                        layout.infoRow("PREÇO", layout.escape("R$ " + price)) +
-                        "<div style='margin-top:16px;'></div>" +
-                        layout.note("Adicionado por: " + layout.escape(createdBy)) +
-                        "<div style='margin-top:12px;'></div>" +
-                        layout.warning("📌 Esse serviço já pode ser usado em novos agendamentos.");
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Novo serviço atribuído a você ✂️",
+                content,
+                "Ver Detalhes",
+                layout.frontendUrl() + "/catalogo"
+        );
+    }
 
-        String ctaUrl = layout.frontendUrl() + "/catalogo"; // ajuste rota do front se precisar
-        return layout.baseTemplate(title, subtitle, content, "Ver Catálogo", ctaUrl);
+    public String htmlForOthers(String nome, String serviceName, String price) {
+        String content = layout.paragraph("Temos novidade! Um novo serviço acaba de ser adicionado ao nosso catálogo.") +
+                "<br>" +
+                layout.infoRow("Serviço", serviceName) +
+                layout.infoRow("Valor", price);
+
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Novidade no Catálogo ✨",
+                content,
+                "Conferir",
+                layout.frontendUrl() + "/catalogo"
+        );
     }
 }

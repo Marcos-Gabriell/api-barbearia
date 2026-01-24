@@ -12,24 +12,44 @@ public class CatalogUpdatedTemplate {
         this.layout = layout;
     }
 
-    public String subject() {
-        return "Serviço atualizado no catálogo";
+    public String htmlForAuthor(String nome, String serviceName) {
+        String content = layout.paragraph("As alterações no serviço " + serviceName + " foram salvas com sucesso.");
+
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Edição Confirmada ✏️",
+                content,
+                "Ver Alterações",
+                layout.frontendUrl() + "/catalogo"
+        );
     }
 
-    public String html(String nome, String serviceName, int durationMinutes, String price, String updatedBy) {
-        String title = "Serviço atualizado ✨";
-        String subtitle = "Olá " + layout.escape(nome) + ", um serviço do catálogo foi atualizado.";
+    public String htmlForResponsible(String nome, String serviceName, String updatedBy) {
+        String content = layout.paragraph("O serviço " + serviceName + ", que você atende, sofreu atualizações recentes.") +
+                "<br>" +
+                layout.note("Atualizado por: " + updatedBy) +
+                layout.warning("Por favor, verifique se houve mudança no preço ou tempo de execução.");
 
-        String content =
-                layout.infoRow("SERVIÇO", layout.escape(serviceName)) +
-                        layout.infoRow("DURAÇÃO", layout.escape(durationMinutes + " min")) +
-                        layout.infoRow("PREÇO", layout.escape("R$ " + price)) +
-                        "<div style='margin-top:16px;'></div>" +
-                        layout.note("Atualizado por: " + layout.escape(updatedBy)) +
-                        "<div style='margin-top:12px;'></div>" +
-                        layout.warning("✅ Se você tiver agendamentos futuros, confira se algo mudou.");
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Atualização de Serviço 🔄",
+                content,
+                "Conferir Mudanças",
+                layout.frontendUrl() + "/catalogo"
+        );
+    }
 
-        String ctaUrl = layout.frontendUrl() + "/catalogo";
-        return layout.baseTemplate(title, subtitle, content, "Ver Catálogo", ctaUrl);
+    public String htmlForRemovedResponsible(String nome, String serviceName, String updatedBy) {
+        String content = layout.paragraph("Você não é mais listado como responsável técnico pelo serviço " + serviceName + ".") +
+                "<br>" +
+                layout.note("Alteração realizada por: " + updatedBy);
+
+        return layout.baseTemplate(
+                "Olá, " + layout.escape(nome),
+                "Vínculo Removido ⚠️",
+                content,
+                "Ver Catálogo",
+                layout.frontendUrl() + "/catalogo"
+        );
     }
 }

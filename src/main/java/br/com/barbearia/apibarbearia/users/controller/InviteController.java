@@ -15,6 +15,7 @@ import java.util.Map;
 public class InviteController {
 
     private final UserService userService;
+
     @GetMapping("/{token}")
     public ResponseEntity<?> validateToken(@PathVariable String token) {
         var invite = userService.validateInviteToken(token);

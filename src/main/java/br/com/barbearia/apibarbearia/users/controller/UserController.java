@@ -1,6 +1,9 @@
 package br.com.barbearia.apibarbearia.users.controller;
 
-import br.com.barbearia.apibarbearia.users.dtos.*;
+import br.com.barbearia.apibarbearia.users.dtos.InviteUserRequest;
+import br.com.barbearia.apibarbearia.users.dtos.UserResponse;
+import br.com.barbearia.apibarbearia.users.dtos.UserUpdateRequest;
+import br.com.barbearia.apibarbearia.users.dtos.UserWithTempPasswordResponse;
 import br.com.barbearia.apibarbearia.users.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -37,20 +40,10 @@ public class UserController {
         ));
     }
 
-    @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody UserCreateRequest req) {
-        UserWithTempPasswordResponse created = service.create(req);
-        return ResponseEntity.ok(Map.of(
-                "message", "Usuário criado com sucesso.",
-                "data", created
-        ));
-    }
+    // ✅ REMOVIDO: create manual (POST /api/users)
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(
-            @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest req
-    ) {
+    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest req) {
         UserResponse updated = service.update(id, req);
         return ResponseEntity.ok(Map.of(
                 "message", "Usuário atualizado com sucesso.",
@@ -86,7 +79,7 @@ public class UserController {
     }
 
     @PostMapping("/invite")
-    @PreAuthorize("hasAnyRole('DEV','ADMIN')") // Só Admin/Dev envia convite
+    @PreAuthorize("hasAnyRole('DEV','ADMIN')")
     public ResponseEntity<?> sendInvite(@Valid @RequestBody InviteUserRequest req) {
         service.inviteUser(req);
         return ResponseEntity.ok(Map.of(

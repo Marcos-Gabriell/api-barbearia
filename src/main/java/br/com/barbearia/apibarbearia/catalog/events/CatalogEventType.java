@@ -4,5 +4,6 @@ public enum CatalogEventType {
     CREATED,
     UPDATED,
     ACTIVATED,
-    DEACTIVATED
+    DEACTIVATED,
+    DELETED
 }

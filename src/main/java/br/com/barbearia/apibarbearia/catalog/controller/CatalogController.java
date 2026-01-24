@@ -3,7 +3,7 @@ package br.com.barbearia.apibarbearia.catalog.controller;
 import br.com.barbearia.apibarbearia.catalog.dto.*;
 import br.com.barbearia.apibarbearia.catalog.service.CatalogService;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity; // Importante
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,15 +27,20 @@ public class CatalogController {
     public ResponseEntity<?> listAll() {
         List<CatalogItemResponse> items = catalogService.listAll();
 
-        if (items.isEmpty()) {
-            return ResponseEntity.ok(Map.of(
-                    "message", "O catálogo está vazio. Nenhum serviço foi cadastrado ainda.",
-                    "data", items // Retorna [] para o front não quebrar
-            ));
-        }
-
         return ResponseEntity.ok(Map.of(
-                "message", "Catálogo listado com sucesso.",
+                "message", items.isEmpty()
+                        ? "O catálogo está vazio. Nenhum serviço foi cadastrado ainda."
+                        : "Catálogo listado com sucesso.",
+                "data", items
+        ));
+    }
+
+    // Opcional: lixeira (somente ADMIN/DEV já está no @PreAuthorize do controller)
+    @GetMapping("/deleted")
+    public ResponseEntity<?> listDeleted() {
+        List<CatalogItemResponse> items = catalogService.listDeleted();
+        return ResponseEntity.ok(Map.of(
+                "message", "Serviços excluídos listados com sucesso.",
                 "data", items
         ));
     }
@@ -73,21 +78,41 @@ public class CatalogController {
 
         CatalogItemResponse toggled = catalogService.toggleActive(id, adminUserId, adminName);
 
-        String statusMsg = toggled.isActive() ? "ativado" : "desativado";
-
         return ResponseEntity.ok(Map.of(
-                "message", "Serviço " + statusMsg + " com sucesso.",
+                "message", "Serviço " + (toggled.isActive() ? "ativado" : "desativado") + " com sucesso.",
                 "data", toggled
         ));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id, Principal principal) {
+        Long adminUserId = LoggedUser.userId(principal);
+        String adminName = LoggedUser.name(principal);
+
+        catalogService.delete(id, adminUserId, adminName);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Serviço excluído com sucesso."
+        ));
+    }
 
     static class LoggedUser {
         static Long userId(Principal principal) {
-            return 1L; // TODO: Implementar lógica real do JWT
+            // TODO: substituir por extração real do JWT (ex: SecurityContextHolder + claims)
+            return 1L;
         }
         static String name(Principal principal) {
             return principal != null ? principal.getName() : "ADMIN";
         }
+    }
+
+    @GetMapping("/all-users")
+    public ResponseEntity<?> listAllUsersForSelection() {
+        List<UserMiniResponse> users = catalogService.listAllUsers();
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Lista de usuários carregada com sucesso.",
+                "data", users
+        ));
     }
 }

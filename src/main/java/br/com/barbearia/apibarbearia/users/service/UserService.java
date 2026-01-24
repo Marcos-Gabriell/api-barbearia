@@ -72,23 +72,18 @@ public class UserService {
             throw new BadRequestException("Administradores só podem convidar Staff.");
         }
 
-        // 1. Verifica se já existe um usuário ATIVO com esse email
         if (userRepository.existsByEmailAndActiveTrue(email)) {
             throw new ConflictException("Já existe um usuário ativo com este e-mail.");
         }
 
-        // 2. Se existe um usuário INATIVO (excluído logicamente), removemos ele para permitir o novo cadastro
         userRepository.findByEmail(email).ifPresent(existing -> {
             if (!existing.isActive()) {
                 userRepository.delete(existing);
-                userRepository.flush(); // Força a deleção imediata
+                userRepository.flush();
             }
         });
 
-        // 3. Verifica e limpa convites anteriores para evitar "NonUniqueResultException"
         List<UserInvite> existingInvites = inviteRepository.findAllByEmail(email);
-
-        // Verifica se existe algum convite válido e não usado
         boolean hasValidInvite = existingInvites.stream()
                 .anyMatch(inv -> !inv.isUsed() && inv.getExpiresAt().isAfter(Instant.now()));
 
@@ -96,15 +91,12 @@ public class UserService {
             throw new ConflictException("Já existe um convite pendente e válido para este e-mail.");
         }
 
-        // Limpa TODOS os convites antigos (expirados ou usados) desse email
         if (!existingInvites.isEmpty()) {
             inviteRepository.deleteAll(existingInvites);
             inviteRepository.flush();
         }
 
-        // 4. Cria o novo convite
         String token = UUID.randomUUID().toString();
-
         UserInvite invite = UserInvite.builder()
                 .email(email)
                 .role(req.getRole())
@@ -119,8 +111,6 @@ public class UserService {
         try {
             emailNotificationService.sendInvite(email, token);
         } catch (Exception e) {
-            e.printStackTrace();
-            // Se falhar o envio, deleta o convite para não ficar "preso"
             inviteRepository.delete(invite);
             throw new BadRequestException("Erro ao enviar e-mail de convite.");
         }
@@ -145,12 +135,14 @@ public class UserService {
     public UserResponse completeInvite(CompleteInviteRequest req) {
         UserInvite invite = validateInviteToken(req.getToken());
 
+        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
+        String validName = validateAndNormalizeName(req.getName());
+
         if (!req.getPassword().equals(req.getConfirmPassword())) {
             throw new BadRequestException("As senhas não conferem.");
         }
-
-        if (req.getPassword().length() < 6 || !req.getPassword().matches(".*\\d.*")) {
-            throw new BadRequestException("A senha deve ter no mínimo 6 caracteres e conter número.");
+        if (req.getPassword().length() < 5) {
+            throw new BadRequestException("A senha deve ter no mínimo 5 caracteres.");
         }
 
         if (userRepository.existsByEmailAndActiveTrue(invite.getEmail())) {
@@ -163,14 +155,13 @@ public class UserService {
             validatePhoneUniqueness(cleanPhone, null);
         }
 
-        // Remove qualquer resquício de usuário antigo com esse email
         userRepository.findByEmail(invite.getEmail()).ifPresent(u -> {
             userRepository.delete(u);
             userRepository.flush();
         });
 
         User newUser = User.builder()
-                .name(req.getName())
+                .name(validName) // Usa o nome validado
                 .email(invite.getEmail())
                 .phone(cleanPhone)
                 .role(invite.getRole())
@@ -188,59 +179,14 @@ public class UserService {
 
         try {
             emailNotificationService.sendUserCreated(savedUser.getEmail(), savedUser.getName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
 
         return toResponse(savedUser);
-    }
-
-    public UserWithTempPasswordResponse create(UserCreateRequest req) {
-        Role actor = currentRole();
-        String email = normalizeEmail(req.getEmail());
-
-        if (actor == Role.ADMIN && req.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador só pode criar usuários do tipo STAFF.");
-        }
-
-        if (userRepository.existsByEmailAndActiveTrue(email)) {
-            throw new ConflictException("Este e-mail já está em uso.");
-        }
-
-        // Limpeza de inativos (igual ao invite)
-        userRepository.findByEmail(email).ifPresent(existing -> {
-            if (!existing.isActive()) {
-                userRepository.delete(existing);
-                userRepository.flush();
-            }
-        });
-
-        String temp = generateTempPassword(10);
-
-        User saved = userRepository.save(User.builder()
-                .name(req.getName())
-                .email(email)
-                .role(req.getRole())
-                .passwordHash(passwordEncoder.encode(temp))
-                .active(true)
-                .mustChangePassword(true)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build());
-
-        try {
-            emailNotificationService.sendUserCreated(saved.getEmail(), saved.getName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return wrapWithTemp(saved, temp);
     }
 
     public UserResponse update(Long id, UserUpdateRequest req) {
         Role actor = currentRole();
         User target = getUser(id);
-
         String email = normalizeEmail(req.getEmail());
 
         if (userRepository.existsByEmailAndIdNot(email, id)) {
@@ -263,9 +209,12 @@ public class UserService {
             }
         }
 
-        boolean updatedBySelf = currentUserId().equals(target.getId());
+        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
+        String validName = validateAndNormalizeName(req.getName());
 
-        target.setName(req.getName());
+        boolean updatedBySelf = currentUserId() != null && currentUserId().equals(target.getId());
+
+        target.setName(validName); // Usa o nome validado
         target.setEmail(email);
         target.setUpdatedAt(Instant.now());
 
@@ -285,9 +234,7 @@ public class UserService {
                         saved.getRole().name(), adminUser.getEmail(), actor.name()
                 );
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
 
         return toResponse(saved);
     }
@@ -308,9 +255,7 @@ public class UserService {
 
         try {
             emailNotificationService.sendUserDeletedByAdmin(targetEmail, targetName, adminUser.getEmail());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
 
         return toResponse(target);
     }
@@ -326,97 +271,6 @@ public class UserService {
         target.setActive(true);
         target.setUpdatedAt(Instant.now());
         return toResponse(userRepository.save(target));
-    }
-
-
-    public UserResponse updateMyProfile(User user, UpdateMyProfileRequest req) {
-        String currentEmail = user.getEmail();
-        String newEmailRaw = req.getEmail().toLowerCase().trim();
-
-        boolean nameChanged = !user.getName().equals(req.getName());
-        boolean emailChanged = !currentEmail.equalsIgnoreCase(newEmailRaw);
-
-        String newPhone = req.getPhone() != null ? req.getPhone().replaceAll("[^0-9]", "") : null;
-        String oldPhone = user.getPhone();
-        boolean phoneChanged = false;
-
-        if (newPhone != null && !newPhone.isBlank()) {
-            if (!newPhone.equals(oldPhone)) {
-                validatePhoneUniqueness(newPhone, user.getId());
-                user.setPhone(newPhone);
-                phoneChanged = true;
-            }
-        }
-
-        if (nameChanged) user.setName(req.getName());
-
-        if (emailChanged) {
-            if (userRepository.existsByEmailAndIdNot(newEmailRaw, user.getId())) {
-                throw new ConflictException("E-mail já em uso.");
-            }
-            String code = String.valueOf(new SecureRandom().nextInt(900000) + 100000);
-            user.setPendingEmail(newEmailRaw);
-            user.setEmailVerificationCode(code);
-            user.setEmailVerificationExpiresAt(Instant.now().plusSeconds(300));
-            try {
-                emailNotificationService.sendVerificationCode(newEmailRaw, user.getName(), code);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        user.setUpdatedAt(Instant.now());
-        User saved = userRepository.save(user);
-
-        if ((nameChanged || phoneChanged) && !emailChanged) {
-            try {
-                emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        return toResponse(saved);
-    }
-
-    public User confirmEmailUpdate(User user, String code) {
-        if (user.getPendingEmail() == null || !user.getEmailVerificationCode().equals(code)) {
-            throw new BadRequestException("Código inválido ou sem solicitação.");
-        }
-        if (Instant.now().isAfter(user.getEmailVerificationExpiresAt())) {
-            throw new BadRequestException("Código expirado.");
-        }
-
-        user.setEmail(user.getPendingEmail());
-        user.setPendingEmail(null);
-        user.setEmailVerificationCode(null);
-        user.setEmailVerificationExpiresAt(null);
-        user.setTokenInvalidationTimestamp(Instant.now());
-
-        return userRepository.save(user);
-    }
-
-    public void changePassword(User user, ChangePasswordRequest req) {
-        if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
-            throw new BadRequestException("Senha atual incorreta.");
-        }
-        if (passwordEncoder.matches(req.getNewPassword(), user.getPasswordHash())) {
-            throw new BadRequestException("Nova senha deve ser diferente da atual.");
-        }
-        if (!req.getNewPassword().equals(req.getConfirmNewPassword())) {
-            throw new BadRequestException("Confirmação de senha incorreta.");
-        }
-
-        user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
-        user.setMustChangePassword(false);
-        user.setTokenInvalidationTimestamp(Instant.now());
-        userRepository.save(user);
-
-        try {
-            emailNotificationService.sendPasswordChanged(user.getEmail(), user.getName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     public UserWithTempPasswordResponse resetPassword(Long id) {
@@ -435,10 +289,10 @@ public class UserService {
 
         try {
             User adminUser = getUser(currentUserId());
-            emailNotificationService.sendPasswordResetByAdmin(target.getEmail(), target.getName(), temp, adminUser.getEmail());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+            emailNotificationService.sendPasswordResetByAdmin(
+                    target.getEmail(), target.getName(), temp, adminUser.getEmail()
+            );
+        } catch (Exception ignored) {}
 
         return wrapWithTemp(target, temp);
     }
@@ -458,9 +312,7 @@ public class UserService {
 
         try {
             emailNotificationService.sendPasswordResetCode(user.getEmail(), user.getName(), code);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
     }
 
     public void validateRecoveryCode(String email, String code) {
@@ -495,13 +347,103 @@ public class UserService {
         userRepository.save(user);
     }
 
+    public UserResponse updateMyProfile(User user, UpdateMyProfileRequest req) {
+        String currentEmail = user.getEmail();
+        String newEmailRaw = req.getEmail().toLowerCase().trim();
+
+        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
+        String validName = validateAndNormalizeName(req.getName());
+
+        boolean nameChanged = !user.getName().equals(validName);
+        boolean emailChanged = !currentEmail.equalsIgnoreCase(newEmailRaw);
+
+        String newPhone = req.getPhone() != null ? req.getPhone().replaceAll("[^0-9]", "") : null;
+        String oldPhone = user.getPhone();
+        boolean phoneChanged = false;
+
+        if (newPhone != null && !newPhone.isBlank()) {
+            if (!newPhone.equals(oldPhone)) {
+                validatePhoneUniqueness(newPhone, user.getId());
+                user.setPhone(newPhone);
+                phoneChanged = true;
+            }
+        }
+
+        if (nameChanged) user.setName(validName); // Usa o nome validado
+
+        if (emailChanged) {
+            if (userRepository.existsByEmailAndIdNot(newEmailRaw, user.getId())) {
+                throw new ConflictException("E-mail já em uso.");
+            }
+            String code = String.valueOf(new SecureRandom().nextInt(900000) + 100000);
+            user.setPendingEmail(newEmailRaw);
+            user.setEmailVerificationCode(code);
+            user.setEmailVerificationExpiresAt(Instant.now().plusSeconds(300));
+            try {
+                emailNotificationService.sendVerificationCode(newEmailRaw, user.getName(), code);
+            } catch (Exception ignored) {}
+        }
+
+        user.setUpdatedAt(Instant.now());
+        User saved = userRepository.save(user);
+
+        if ((nameChanged || phoneChanged) && !emailChanged) {
+            try {
+                emailNotificationService.sendUserUpdatedBySelf(saved.getEmail(), saved.getName());
+            } catch (Exception ignored) {}
+        }
+
+        return toResponse(saved);
+    }
+
+    public User confirmEmailUpdate(User user, String code) {
+        if (user.getPendingEmail() == null || user.getEmailVerificationCode() == null ||
+                !user.getEmailVerificationCode().equals(code)) {
+            throw new BadRequestException("Código inválido ou sem solicitação.");
+        }
+        if (Instant.now().isAfter(user.getEmailVerificationExpiresAt())) {
+            throw new BadRequestException("Código expirado.");
+        }
+
+        user.setEmail(user.getPendingEmail());
+        user.setPendingEmail(null);
+        user.setEmailVerificationCode(null);
+        user.setEmailVerificationExpiresAt(null);
+        user.setTokenInvalidationTimestamp(Instant.now());
+
+        return userRepository.save(user);
+    }
+
+    public void changePassword(User user, ChangePasswordRequest req) {
+        if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Senha atual incorreta.");
+        }
+        if (passwordEncoder.matches(req.getNewPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Nova senha deve ser diferente da atual.");
+        }
+        if (!req.getNewPassword().equals(req.getConfirmNewPassword())) {
+            throw new BadRequestException("Confirmação de senha incorreta.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setMustChangePassword(false);
+        user.setTokenInvalidationTimestamp(Instant.now());
+        userRepository.save(user);
+
+        try {
+            emailNotificationService.sendPasswordChanged(user.getEmail(), user.getName());
+        } catch (Exception ignored) {}
+    }
+
+    // ---------------------------------------------------------
+    // HELPERS E VALIDAÇÕES
+    // ---------------------------------------------------------
+
     private void validatePhoneUniqueness(String phone, Long userIdToIgnore) {
         String cleanPhone = phone.replaceAll("[^0-9]", "");
-
         if (cleanPhone.isEmpty()) return;
 
         Optional<User> existingUser = userRepository.findByPhone(cleanPhone);
-
         if (existingUser.isPresent()) {
             if (userIdToIgnore != null && existingUser.get().getId().equals(userIdToIgnore)) {
                 return;
@@ -510,7 +452,22 @@ public class UserService {
         }
     }
 
+    // NOVO MÉTODO: Garante que o nome chegue "bonitinho" (sem números) ao banco
+    private String validateAndNormalizeName(String name) {
+        if (name == null || name.trim().length() < 3) {
+            throw new BadRequestException("O nome é obrigatório e deve ter no mínimo 3 caracteres.");
+        }
+
+        // Verifica se contém qualquer dígito (0-9)
+        if (name.matches(".*\\d.*")) {
+            throw new BadRequestException("O nome não pode conter números. Por favor, insira um nome válido.");
+        }
+
+        return name.trim();
+    }
+
     private User getUser(Long id) {
+        if (id == null) throw new BadRequestException("Sessão inválida.");
         return userRepository.findById(id).orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
     }
 

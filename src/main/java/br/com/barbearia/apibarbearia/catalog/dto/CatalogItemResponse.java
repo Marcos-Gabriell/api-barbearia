@@ -2,6 +2,7 @@ package br.com.barbearia.apibarbearia.catalog.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 public class CatalogItemResponse {
 
@@ -15,10 +16,12 @@ public class CatalogItemResponse {
     private Instant updatedAt;
     private Long createdByUserId;
 
-    public CatalogItemResponse() {}
+    // ✅ NOVO CAMPO
+    private String createdByUserName;
 
-    public CatalogItemResponse(Long id, String name, String description, Integer durationMinutes, BigDecimal price,
-                               boolean active, Instant createdAt, Instant updatedAt, Long createdByUserId) {
+    private List<UserMiniResponse> responsibleUsers;
+
+    public CatalogItemResponse(Long id, String name, String description, Integer durationMinutes, BigDecimal price, boolean active, Instant createdAt, Instant updatedAt, Long createdByUserId, String createdByUserName, List<UserMiniResponse> responsibleUsers) {
         this.id = id;
         this.name = name;
         this.description = description;
@@ -28,8 +31,11 @@ public class CatalogItemResponse {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.createdByUserId = createdByUserId;
+        this.createdByUserName = createdByUserName;
+        this.responsibleUsers = responsibleUsers;
     }
 
+    // Getters
     public Long getId() { return id; }
     public String getName() { return name; }
     public String getDescription() { return description; }
@@ -39,4 +45,6 @@ public class CatalogItemResponse {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public Long getCreatedByUserId() { return createdByUserId; }
+    public String getCreatedByUserName() { return createdByUserName; }
+    public List<UserMiniResponse> getResponsibleUsers() { return responsibleUsers; }
 }

@@ -34,9 +34,7 @@ public class UserProfileController {
         r.setId(user.getId());
         r.setName(user.getName());
         r.setEmail(user.getEmail());
-
         r.setPhone(user.getPhone());
-
         r.setRole(user.getRole());
         r.setActive(user.isActive());
         r.setMustChangePassword(user.isMustChangePassword());
@@ -48,10 +46,8 @@ public class UserProfileController {
     }
 
     @PutMapping
-    public ResponseEntity<?> updateMyProfile(
-            @Valid @RequestBody UpdateMyProfileRequest req,
-            Authentication authentication
-    ) {
+    public ResponseEntity<?> updateMyProfile(@Valid @RequestBody UpdateMyProfileRequest req,
+                                             Authentication authentication) {
         Long userId = Long.parseLong(authentication.getName());
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
@@ -70,10 +66,8 @@ public class UserProfileController {
     }
 
     @PostMapping("/confirm-email")
-    public ResponseEntity<?> confirmEmail(
-            @RequestBody @Valid ConfirmEmailRequest req,
-            Authentication authentication
-    ) {
+    public ResponseEntity<?> confirmEmail(@RequestBody @Valid ConfirmEmailRequest req,
+                                          Authentication authentication) {
         Long userId = Long.parseLong(authentication.getName());
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
@@ -93,10 +87,8 @@ public class UserProfileController {
     }
 
     @PatchMapping("/change-password")
-    public ResponseEntity<?> changePassword(
-            @RequestBody @Valid ChangePasswordRequest req,
-            Authentication authentication
-    ) {
+    public ResponseEntity<?> changePassword(@RequestBody @Valid ChangePasswordRequest req,
+                                            Authentication authentication) {
         Long userId = Long.parseLong(authentication.getName());
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));

@@ -21,4 +21,6 @@ public class CompleteInviteRequest {
 
     @NotBlank(message = "A confirmação de senha é obrigatória")
     private String confirmPassword;
+
+
 }
