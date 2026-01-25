@@ -45,13 +45,12 @@ public class CatalogService {
     }
 
     @Transactional
-    public CatalogItemResponse create(CreateCatalogItemRequest req, Long adminUserId, String adminName) {
+    public CatalogItemResponse create(CreateCatalogItemRequest req, Long adminUserId, String adminNameParam) {
         String name = normalizeName(req.getName());
         String description = normalize(req.getDescription());
         Integer duration = req.getDurationMinutes();
         BigDecimal price = req.getPrice();
 
-        // Validações
         validate(name, duration, price);
         validateResponsibles(req.getResponsibleUserIds());
 
@@ -76,7 +75,11 @@ public class CatalogService {
 
         CatalogItem saved = repository.save(item);
 
-        // Publica evento simplificado (Create não precisa de diff de added/removed, pois todos são novos)
+        // CORREÇÃO: Busca o usuário real no banco para garantir Nome e Email corretos
+        User admin = findAdminUser(adminUserId);
+        String realName = admin != null ? admin.getName() : adminNameParam;
+        String realEmail = admin != null ? admin.getEmail() : "sistema@barbearia.com";
+
         publisher.publishEvent(new CatalogChangedEvent(
                 CatalogEventType.CREATED,
                 saved.getId(),
@@ -85,18 +88,18 @@ public class CatalogService {
                 saved.getPrice(),
                 saved.isActive(),
                 adminUserId,
-                adminName
+                realName,  // ✅ Nome Real do Banco
+                realEmail  // ✅ Email Real do Banco
         ));
 
         return toResponse(saved);
     }
 
     @Transactional
-    public CatalogItemResponse update(Long id, UpdateCatalogItemRequest req, Long adminUserId, String adminName) {
+    public CatalogItemResponse update(Long id, UpdateCatalogItemRequest req, Long adminUserId, String adminNameParam) {
         CatalogItem item = repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new CatalogExceptions.CatalogItemNotFoundException(id));
 
-        // 1. Snapshot: IDs dos responsáveis ANTES da atualização
         Set<Long> oldResponsibleIds = item.getResponsibles().stream()
                 .map(User::getId)
                 .collect(Collectors.toSet());
@@ -117,25 +120,26 @@ public class CatalogService {
 
         Set<User> responsibles = loadResponsiblesOrFail(req.getResponsibleUserIds());
 
-        // Atualiza a entidade
         item.update(name, description, duration, price, req.getActive());
         item.setResponsibles(responsibles);
 
         CatalogItem saved = repository.save(item);
 
-        // 2. Snapshot: IDs dos responsáveis DEPOIS da atualização
         Set<Long> newResponsibleIds = saved.getResponsibles().stream()
                 .map(User::getId)
                 .collect(Collectors.toSet());
 
-        // 3. Cálculo do DIFF (Quem entrou e quem saiu)
         Set<Long> addedIds = new HashSet<>(newResponsibleIds);
-        addedIds.removeAll(oldResponsibleIds); // Presentes no novo, ausentes no antigo
+        addedIds.removeAll(oldResponsibleIds);
 
         Set<Long> removedIds = new HashSet<>(oldResponsibleIds);
-        removedIds.removeAll(newResponsibleIds); // Presentes no antigo, ausentes no novo
+        removedIds.removeAll(newResponsibleIds);
 
-        // 4. Publica evento COMPLETO com os sets de diff
+        // CORREÇÃO: Busca o usuário real
+        User admin = findAdminUser(adminUserId);
+        String realName = admin != null ? admin.getName() : adminNameParam;
+        String realEmail = admin != null ? admin.getEmail() : "sistema@barbearia.com";
+
         publisher.publishEvent(new CatalogChangedEvent(
                 CatalogEventType.UPDATED,
                 saved.getId(),
@@ -144,7 +148,8 @@ public class CatalogService {
                 saved.getPrice(),
                 saved.isActive(),
                 adminUserId,
-                adminName,
+                realName, // ✅ Nome Real
+                realEmail, // ✅ Email Real
                 addedIds,
                 removedIds
         ));
@@ -153,7 +158,7 @@ public class CatalogService {
     }
 
     @Transactional
-    public CatalogItemResponse toggleActive(Long id, Long adminUserId, String adminName) {
+    public CatalogItemResponse toggleActive(Long id, Long adminUserId, String adminNameParam) {
         CatalogItem item = repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new CatalogExceptions.CatalogItemNotFoundException(id));
 
@@ -164,7 +169,11 @@ public class CatalogService {
 
         CatalogEventType type = wasActive ? CatalogEventType.DEACTIVATED : CatalogEventType.ACTIVATED;
 
-        // Publica evento simplificado
+        // CORREÇÃO: Busca o usuário real
+        User admin = findAdminUser(adminUserId);
+        String realName = admin != null ? admin.getName() : adminNameParam;
+        String realEmail = admin != null ? admin.getEmail() : "sistema@barbearia.com";
+
         publisher.publishEvent(new CatalogChangedEvent(
                 type,
                 saved.getId(),
@@ -173,32 +182,33 @@ public class CatalogService {
                 saved.getPrice(),
                 saved.isActive(),
                 adminUserId,
-                adminName
+                realName, // ✅ Nome Real
+                realEmail // ✅ Email Real
         ));
 
         return toResponse(saved);
     }
 
     @Transactional
-    public void delete(Long id, Long adminUserId, String adminName) {
+    public void delete(Long id, Long adminUserId, String adminNameParam) {
         CatalogItem item = repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new CatalogExceptions.CatalogItemNotFoundException(id));
 
-        // Captura dados para o evento antes de limpar
         Long itemId = item.getId();
         String itemName = item.getName();
         Integer duration = item.getDurationMinutes();
         BigDecimal price = item.getPrice();
         boolean isActive = item.isActive();
 
-        // Remove vínculos de responsabilidade para limpar tabela de join
         item.setResponsibles(new HashSet<>());
-
-        // Soft delete
         item.softDelete();
         repository.save(item);
 
-        // Publica evento simplificado
+        // CORREÇÃO: Busca o usuário real
+        User admin = findAdminUser(adminUserId);
+        String realName = admin != null ? admin.getName() : adminNameParam;
+        String realEmail = admin != null ? admin.getEmail() : "sistema@barbearia.com";
+
         publisher.publishEvent(new CatalogChangedEvent(
                 CatalogEventType.DELETED,
                 itemId,
@@ -207,7 +217,8 @@ public class CatalogService {
                 price,
                 isActive,
                 adminUserId,
-                adminName
+                realName, // ✅ Nome Real
+                realEmail // ✅ Email Real
         ));
     }
 
@@ -220,6 +231,12 @@ public class CatalogService {
     }
 
     // ---------------- helpers ----------------
+
+    // Helper centralizado para buscar o usuário (Admin/Autor)
+    private User findAdminUser(Long adminUserId) {
+        if (adminUserId == null) return null;
+        return userRepository.findById(adminUserId).orElse(null);
+    }
 
     private CatalogItemResponse toResponse(CatalogItem item) {
         List<UserMiniResponse> responsibles = item.getResponsibles()
@@ -252,7 +269,6 @@ public class CatalogService {
 
     private Set<User> loadResponsiblesOrFail(List<Long> ids) {
         if (ids == null) return new HashSet<>();
-
         List<Long> uniqueIds = ids.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
         List<User> users = userRepository.findAllById(uniqueIds);
 

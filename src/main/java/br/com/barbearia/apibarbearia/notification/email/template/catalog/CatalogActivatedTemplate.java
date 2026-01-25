@@ -1,6 +1,5 @@
 package br.com.barbearia.apibarbearia.notification.email.template.catalog;
 
-
 import br.com.barbearia.apibarbearia.notification.email.template.EmailLayout;
 import org.springframework.stereotype.Service;
 
@@ -17,15 +16,15 @@ public class CatalogActivatedTemplate {
         return "Serviço ativado no catálogo";
     }
 
-    public String html(String nome, String serviceName, String activatedBy) {
+    public String html(String nome, String serviceName, String authorName, String authorEmail) {
         String title = "Serviço ativado ✅";
         String subtitle = "Olá " + layout.escape(nome) + ", um serviço foi ativado e voltou a ficar disponível.";
 
         String content =
-                layout.infoRow("SERVIÇO", layout.escape(serviceName)) +
-                        layout.infoRow("STATUS", layout.escape("ATIVO")) +
+                layout.infoRow("SERVIÇO", serviceName) + // Removido escape manual redundante se o layout já trata
+                        layout.infoRow("STATUS", "ATIVO") +
                         "<div style='margin-top:16px;'></div>" +
-                        layout.note("Ativado por: " + layout.escape(activatedBy));
+                        layout.note("Ativado por: " + authorName + " (" + authorEmail + ")");
 
         String ctaUrl = layout.frontendUrl() + "/catalogo";
         return layout.baseTemplate(title, subtitle, content, "Ver Catálogo", ctaUrl);

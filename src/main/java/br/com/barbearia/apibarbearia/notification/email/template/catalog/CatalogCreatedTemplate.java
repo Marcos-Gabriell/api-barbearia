@@ -28,14 +28,15 @@ public class CatalogCreatedTemplate {
         );
     }
 
-    public String htmlForResponsible(String nome, String serviceName, int duration, String price, String createdBy) {
+    // Alterado: Recebe Nome e Email
+    public String htmlForResponsible(String nome, String serviceName, int duration, String price, String authorName, String authorEmail) {
         String content = layout.paragraph("Você foi incluído como responsável técnico por este novo serviço.") +
                 "<br>" +
                 layout.infoRow("Serviço", serviceName) +
                 layout.infoRow("Preço", price) +
                 layout.infoRow("Duração", duration + " min") +
                 "<br>" +
-                layout.note("Criado por: " + createdBy);
+                layout.note("Criado por: " + authorName + " (" + authorEmail + ")");
 
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),

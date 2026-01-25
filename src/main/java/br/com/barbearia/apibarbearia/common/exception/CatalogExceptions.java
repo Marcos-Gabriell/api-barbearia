@@ -2,15 +2,15 @@ package br.com.barbearia.apibarbearia.common.exception;
 
 public class CatalogExceptions {
 
-    public static class CatalogItemNotFoundException extends RuntimeException {
+    public static class CatalogItemNotFoundException extends NotFoundException {
         public CatalogItemNotFoundException(Long id) {
-            super("Catalog item not found. id=" + id);
+            super("Serviço não encontrado. id=" + id);
         }
     }
 
-    public static class CatalogItemNameAlreadyExistsException extends RuntimeException {
+    public static class CatalogItemNameAlreadyExistsException extends ConflictException {
         public CatalogItemNameAlreadyExistsException(String name) {
-            super("Service name already exists: " + name);
+            super("Já existe um produto/serviço com esse nome.");
         }
     }
 }

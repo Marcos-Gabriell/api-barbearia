@@ -24,10 +24,10 @@ public class CatalogUpdatedTemplate {
         );
     }
 
-    public String htmlForResponsible(String nome, String serviceName, String updatedBy) {
+    public String htmlForResponsible(String nome, String serviceName, String authorName, String authorEmail) {
         String content = layout.paragraph("O serviço " + serviceName + ", que você atende, sofreu atualizações recentes.") +
                 "<br>" +
-                layout.note("Atualizado por: " + updatedBy) +
+                layout.note("Atualizado por: " + authorName + " (" + authorEmail + ")") +
                 layout.warning("Por favor, verifique se houve mudança no preço ou tempo de execução.");
 
         return layout.baseTemplate(
@@ -39,10 +39,10 @@ public class CatalogUpdatedTemplate {
         );
     }
 
-    public String htmlForRemovedResponsible(String nome, String serviceName, String updatedBy) {
+    public String htmlForRemovedResponsible(String nome, String serviceName, String authorName, String authorEmail) {
         String content = layout.paragraph("Você não é mais listado como responsável técnico pelo serviço " + serviceName + ".") +
                 "<br>" +
-                layout.note("Alteração realizada por: " + updatedBy);
+                layout.note("Alteração realizada por: " + authorName + " (" + authorEmail + ")");
 
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),

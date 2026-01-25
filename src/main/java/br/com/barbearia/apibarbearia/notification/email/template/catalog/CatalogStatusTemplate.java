@@ -12,9 +12,9 @@ public class CatalogStatusTemplate {
         this.layout = layout;
     }
 
-    public String html(String nome, String serviceName, boolean activated, String byUser) {
+    public String html(String nome, String serviceName, boolean activated, String authorName, String authorEmail) {
         String statusText = activated ? "ATIVADO (Visível)" : "DESATIVADO (Oculto)";
-        String color = activated ? "#10b981" : "#ef4444"; // Verde ou Vermelho
+        String color = activated ? "#10b981" : "#ef4444";
 
         String content = layout.paragraph("O status do serviço " + serviceName + " foi alterado.") +
                 "<br>" +
@@ -22,7 +22,7 @@ public class CatalogStatusTemplate {
                 statusText +
                 "</div>" +
                 "<br>" +
-                layout.note("Alterado por: " + byUser);
+                layout.note("Alterado por: " + authorName + " (" + authorEmail + ")");
 
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),

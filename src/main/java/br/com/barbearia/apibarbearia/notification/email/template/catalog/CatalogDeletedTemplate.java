@@ -16,15 +16,15 @@ public class CatalogDeletedTemplate {
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),
                 "Serviço Excluído 🗑️",
-                layout.paragraph("Você confirmou a exclusão do serviço <b>" + serviceName + "</b> do sistema."),
+                layout.paragraph("Você confirmou a exclusão do serviço " + serviceName + " do sistema."),
                 "Ir para o Painel",
                 layout.frontendUrl() + "/dashboard"
         );
     }
 
-    public String htmlForResponsible(String nome, String serviceName, String deletedBy) {
-        String content = layout.paragraph("O serviço <b>" + serviceName + "</b> foi descontinuado e removido do catálogo.") +
-                layout.note("Ação realizada por: " + deletedBy);
+    public String htmlForResponsible(String nome, String serviceName, String authorName, String authorEmail) {
+        String content = layout.paragraph("O serviço " + serviceName + " foi descontinuado e removido do catálogo.") +
+                layout.note("Ação realizada por: " + authorName + " (" + authorEmail + ")");
 
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),
@@ -39,7 +39,7 @@ public class CatalogDeletedTemplate {
         return layout.baseTemplate(
                 "Olá, " + layout.escape(nome),
                 "Atualização do Catálogo",
-                layout.paragraph("O serviço <b>" + serviceName + "</b> não está mais disponível em nossa grade."),
+                layout.paragraph("O serviço " + serviceName + " não está mais disponível em nossa grade."),
                 "Ver Catálogo Atualizado",
                 layout.frontendUrl() + "/catalogo"
         );

@@ -16,15 +16,15 @@ public class CatalogDeactivatedTemplate {
         return "Serviço desativado no catálogo";
     }
 
-    public String html(String nome, String serviceName, String deactivatedBy) {
+    public String html(String nome, String serviceName, String authorName, String authorEmail) {
         String title = "Serviço desativado ⚠️";
         String subtitle = "Olá " + layout.escape(nome) + ", um serviço foi desativado e não deve aparecer para novos agendamentos.";
 
         String content =
-                layout.infoRow("SERVIÇO", layout.escape(serviceName)) +
-                        layout.infoRow("STATUS", layout.escape("INATIVO")) +
+                layout.infoRow("SERVIÇO", serviceName) +
+                        layout.infoRow("STATUS", "INATIVO") +
                         "<div style='margin-top:16px;'></div>" +
-                        layout.note("Desativado por: " + layout.escape(deactivatedBy)) +
+                        layout.note("Desativado por: " + authorName + " (" + authorEmail + ")") +
                         "<div style='margin-top:12px;'></div>" +
                         layout.warning("⚠️ Se existir agendamento futuro com esse serviço, revise com a equipe.");
 
