@@ -8,16 +8,15 @@ Backend de um sistema **inteligente e estratégico** de gerenciamento e agendame
 
 ---
 
-## 📍 Status Atual do Projeto: Fase de Fundação Concluída
+## 📍 Status Atual do Projeto: Expansão do Core Business
 
-Estamos no estágio de **Consolidação da Segurança e Gestão de Identidade**.
-Acabamos de finalizar a refatoração completa do sistema de autenticação, implementando fluxos seguros de convite, recuperação de conta e hierarquia de permissões.
+Estamos no estágio de **Construção do Motor de Agendamentos**.
+Acabamos de finalizar o **Módulo de Catálogo Inteligente**, que gerencia não apenas os serviços, mas a responsabilidade técnica da equipe sobre eles.
 
 **O que foi entregue recentemente:**
 - ✅ Sistema de Autenticação Robusto (Token + Refresh Token)
-- ✅ Gestão de Usuários por Convite (E-mail)
-- ✅ Painel "Meu Perfil" (Auto-gestão de dados)
-- ✅ Hierarquia de Acesso (RBAC)
+- ✅ Gestão de Usuários por Convite e Hierarquia (RBAC)
+- ✅ **Catálogo Inteligente:** Gestão de serviços com algoritmo de "Diff" de responsáveis e notificações contextuais.
 
 ---
 
@@ -27,9 +26,24 @@ Criar uma **API moderna, segura e escalável** que permita à barbearia controla
 
 ---
 
+## 📂 Módulo de Catálogo Inteligente (Novo)
+
+O catálogo foi desenvolvido para ir além de um simples cadastro (CRUD). Ele gerencia a **responsabilidade técnica** e a comunicação com a equipe.
+
+### 🧠 Lógica de Negócio e "Diff"
+Ao editar um serviço, o sistema utiliza um algoritmo de comparação de conjuntos para entender exatamente o que mudou na equipe:
+1.  **Entrou na equipe?** → Recebe e-mail de "Boas-vindas ao serviço".
+2.  **Saiu da equipe?** → Recebe e-mail de "Aviso de remoção".
+3.  **Permaneceu?** → Recebe e-mail de atualização apenas se houver mudança crítica (preço/tempo).
+
+### 🔄 Event-Driven
+Toda a comunicação é desacoplada. O salvamento no banco dispara eventos que são processados assincronamente para envio de notificações, garantindo performance.
+
+---
+
 ## 🔐 Segurança e Gestão de Identidade
 
-O sistema conta agora com um módulo de segurança avançado:
+O sistema conta com um módulo de segurança avançado:
 
 ### 🛡️ Autenticação e Sessão
 - **JWT & Refresh Token:** Implementação completa de tokens de acesso com rotação de refresh token para maior segurança.
@@ -66,17 +80,18 @@ Não há cadastro público aberto. O acesso é controlado via convite:
 
 Para garantir que o sistema suporte múltiplos usuários simultâneos sem travamentos, utilizamos a annotation `@EnableAsync` para processamento paralelo:
 
-- **E-mails em Background:** O envio de e-mails (convites, recuperações, notificações) é processado em uma thread separada.
+- **E-mails em Background:** O envio de e-mails (convites, recuperações, notificações de catálogo) é processado em uma thread separada.
 - **Benefício:** Isso impede que a API fique "esperando" o servidor de e-mail responder. O usuário recebe a confirmação na tela instantaneamente, enquanto o sistema trabalha nos bastidores.
 
 ---
 
 ## 🧩 Funcionalidades Gerais
 
-### 📌 Agendamentos (Em Breve)
+### 📌 Agendamentos (Próximo Passo)
 - Visualização de agenda (Dia/Semana).
 - Cancelamento seguro via link (Tokenizado).
 - Bloqueio de horários.
+- Controle de Agendamento Interno (Balcão) vs Externo (Cliente).
 
 ### 📊 Dashboard e Relatórios
 - Análise de performance e serviços mais vendidos.
@@ -85,7 +100,7 @@ Para garantir que o sistema suporte múltiplos usuários simultâneos sem travam
 - Padronização de templates de e-mail (HTML) para:
     - Boas-vindas/Convite.
     - Recuperação de senha.
-    - Aviso de alteração de dados.
+    - Alterações no Catálogo (Novo/Editado/Removido).
     - Agendamentos (Futuro).
 
 ---
@@ -115,15 +130,14 @@ Para garantir que o sistema suporte múltiplos usuários simultâneos sem travam
 - Módulo de Usuários (CRUD Completo)
 - Fluxo de Convites e E-mails Transacionais
 - Funcionalidade "Esqueci Minha Senha" & "Meu Perfil"
+- **Catálogo de Serviços Inteligente**
 
 ### 🚧 Em Desenvolvimento
-- Catálogo de Serviços
-- Módulo de Agendamentos
+- Módulo de Agendamentos (Interno e Externo)
 - Dashboard inteligente
-
 
 ---
 
 ## 📄 Licença e Direitos
 
-Este projeto está sob licença **MIT**
+Este projeto está sob licença **MIT**.
