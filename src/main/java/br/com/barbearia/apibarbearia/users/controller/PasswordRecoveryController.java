@@ -1,8 +1,8 @@
 package br.com.barbearia.apibarbearia.users.controller;
 
-import br.com.barbearia.apibarbearia.users.dtos.CompletePasswordResetRequest;
-import br.com.barbearia.apibarbearia.users.dtos.ForgotPasswordRequest;
-import br.com.barbearia.apibarbearia.users.dtos.ValidateCodeRequest;
+import br.com.barbearia.apibarbearia.users.dto.CompletePasswordResetRequest;
+import br.com.barbearia.apibarbearia.users.dto.ForgotPasswordRequest;
+import br.com.barbearia.apibarbearia.users.dto.ValidateCodeRequest;
 import br.com.barbearia.apibarbearia.users.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

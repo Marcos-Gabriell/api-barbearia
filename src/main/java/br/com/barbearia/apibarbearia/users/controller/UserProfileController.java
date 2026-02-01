@@ -2,7 +2,7 @@ package br.com.barbearia.apibarbearia.users.controller;
 
 import br.com.barbearia.apibarbearia.auth.security.JwtService;
 import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
-import br.com.barbearia.apibarbearia.users.dtos.*;
+import br.com.barbearia.apibarbearia.users.dto.*;
 import br.com.barbearia.apibarbearia.users.entity.User;
 import br.com.barbearia.apibarbearia.users.repository.UserRepository;
 import br.com.barbearia.apibarbearia.users.service.UserService;

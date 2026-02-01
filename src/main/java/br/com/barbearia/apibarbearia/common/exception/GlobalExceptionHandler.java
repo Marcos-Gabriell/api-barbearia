@@ -1,7 +1,13 @@
 package br.com.barbearia.apibarbearia.common.exception;
 
+import br.com.barbearia.apibarbearia.availability.common.exception.ForbiddenException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -12,6 +18,8 @@ import java.util.*;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(
@@ -31,7 +39,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI(), null);
     }
 
-    // Erros do @Valid
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleForbidden(
+            ForbiddenException ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), req.getRequestURI(), null);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(
             MethodArgumentNotValidException ex, HttpServletRequest req) {
@@ -46,20 +59,57 @@ public class GlobalExceptionHandler {
 
         return build(
                 HttpStatus.BAD_REQUEST,
-                "Dados inválidos.",
+                "Dados inválidos. Verifique os campos.",
                 req.getRequestURI(),
                 fieldErrors
         );
     }
 
-    // Fallback
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest req) {
+
+        String message = String.format(
+                "Método '%s' não suportado para esta rota. Tente: %s",
+                ex.getMethod(), ex.getSupportedHttpMethods()
+        );
+
+        return build(HttpStatus.METHOD_NOT_ALLOWED, message, req.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleJsonError(
+            HttpMessageNotReadableException ex, HttpServletRequest req) {
+
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Formato de requisição inválido (JSON malformado ou tipo de dado incorreto).",
+                req.getRequestURI(),
+                null
+        );
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(
+            AccessDeniedException ex, HttpServletRequest req) {
+
+        return build(
+                HttpStatus.FORBIDDEN,
+                "Acesso negado. Você não tem permissão para realizar esta ação.",
+                req.getRequestURI(),
+                null
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(
             Exception ex, HttpServletRequest req) {
 
+        log.error("ERRO INESPERADO NA API", ex);
+
         return build(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "Erro inesperado.",
+                "Erro interno no servidor.",
                 req.getRequestURI(),
                 null
         );
@@ -72,7 +122,7 @@ public class GlobalExceptionHandler {
             Map<String, ?> errors
     ) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", Instant.now().toString());
+        body.put("timestamp", Instant.now());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
         body.put("message", message);

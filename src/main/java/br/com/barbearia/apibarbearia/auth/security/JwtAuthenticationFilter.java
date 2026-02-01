@@ -1,12 +1,15 @@
 package br.com.barbearia.apibarbearia.auth.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -16,6 +19,9 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -24,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     protected void doFilterInternal(
@@ -32,60 +39,86 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        final String jwt = authHeader.substring(7);
-
-        // Extrai o ID do usuário (subject) e o e-mail
-        final String userId = jwtService.getSubject(jwt);
-
-        // Opcional: extrair email se sua lógica de load depender disso,
-        // mas como seu UserDetails usa ID, focamos no userId.
-        // final String userEmail = jwtService.getUserEmail(jwt);
-
-        // Se não conseguiu extrair o ID, segue sem autenticar
-        if (userId == null) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // Se já está autenticado no contexto, segue
+        // Se já tiver auth no contexto, segue normal
         if (SecurityContextHolder.getContext().getAuthentication() != null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        try {
-            // Carrega o UserDetails usando o ID (Subject do token)
-            // Aqui é importante que seu UserDetailsService busque pelo ID se receber um número string
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userId);
+        final String authHeader = request.getHeader("Authorization");
 
-            // Valida o token passando o UserDetails recuperado do banco
-            // O JwtService fará o cast para User entity e checará o timestamp
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // Autentica o usuário no contexto do Spring Security
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-            }
-        } catch (Exception e) {
-            // Log discreto para não poluir em caso de token expirado comum,
-            // mas útil para debug se for erro de banco/lógica
-            log.debug("Falha na autenticação JWT: {}", e.getMessage());
+        // Sem Bearer -> deixa passar (rotas públicas continuam funcionando)
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
         }
 
-        filterChain.doFilter(request, response);
+        final String jwt = authHeader.substring(7).trim();
+
+        // Bearer vazio
+        if (jwt.isEmpty()) {
+            writeUnauthorized(response, request, "Token ausente.");
+            return;
+        }
+
+        // Extrai o subject (ID)
+        final String subject = jwtService.getSubject(jwt);
+
+        // Se não extrair subject, token provavelmente inválido
+        if (subject == null || subject.isBlank()) {
+            writeUnauthorized(response, request, "Token inválido ou malformado.");
+            return;
+        }
+
+        try {
+            // Carrega user pelo "username" (no seu caso: ID em String)
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(subject);
+
+            // Valida token com o user do banco
+            if (!jwtService.isTokenValid(jwt, userDetails)) {
+                writeUnauthorized(response, request, "Token expirado ou inválido.");
+                return;
+            }
+
+            UsernamePasswordAuthenticationToken authToken =
+                    new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+
+            filterChain.doFilter(request, response);
+
+        } catch (UsernameNotFoundException ex) {
+            writeUnauthorized(response, request, "Usuário do token não encontrado.");
+        } catch (Exception ex) {
+            // Qualquer exceção inesperada no filtro não deve virar 500 “mudo”
+            log.debug("Falha na autenticação JWT: {}", ex.getMessage());
+            writeUnauthorized(response, request, "Falha ao validar autenticação.");
+        }
+    }
+
+    /**
+     * Retorna 401 com JSON padrão.
+     * Isso te ajuda a debugar no Postman e padroniza os erros.
+     */
+    private void writeUnauthorized(HttpServletResponse response, HttpServletRequest request, String message) throws IOException {
+        if (response.isCommitted()) return;
+
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("status", 401);
+        body.put("error", "Unauthorized");
+        body.put("message", message);
+        body.put("path", request.getRequestURI());
+
+        response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 }

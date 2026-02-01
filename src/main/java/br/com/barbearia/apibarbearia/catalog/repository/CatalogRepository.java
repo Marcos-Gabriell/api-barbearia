@@ -19,4 +19,6 @@ public interface CatalogRepository extends JpaRepository<CatalogItem, Long> {
 
     @Query("select (count(c) > 0) from CatalogItem c where lower(c.name) = lower(?1) and c.deleted = false and c.id <> ?2")
     boolean existsByNameIgnoreCaseAndDeletedFalseAndIdNot(String name, Long id);
+
+    boolean existsByResponsibles_Id(Long userId);
 }

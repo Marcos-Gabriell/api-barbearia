@@ -25,7 +25,6 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-
     @Column(name = "phone", length = 15)
     @Pattern(regexp = "^[0-9]*$", message = "O telefone deve conter apenas números")
     private String phone;

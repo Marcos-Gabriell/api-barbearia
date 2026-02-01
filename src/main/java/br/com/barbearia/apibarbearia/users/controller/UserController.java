@@ -1,9 +1,9 @@
 package br.com.barbearia.apibarbearia.users.controller;
 
-import br.com.barbearia.apibarbearia.users.dtos.InviteUserRequest;
-import br.com.barbearia.apibarbearia.users.dtos.UserResponse;
-import br.com.barbearia.apibarbearia.users.dtos.UserUpdateRequest;
-import br.com.barbearia.apibarbearia.users.dtos.UserWithTempPasswordResponse;
+import br.com.barbearia.apibarbearia.users.dto.InviteUserRequest;
+import br.com.barbearia.apibarbearia.users.dto.UserResponse;
+import br.com.barbearia.apibarbearia.users.dto.UserUpdateRequest;
+import br.com.barbearia.apibarbearia.users.dto.UserWithTempPasswordResponse;
 import br.com.barbearia.apibarbearia.users.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

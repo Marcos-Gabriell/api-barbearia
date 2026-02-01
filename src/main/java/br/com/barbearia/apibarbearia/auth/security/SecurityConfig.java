@@ -1,6 +1,5 @@
 package br.com.barbearia.apibarbearia.auth.security;
 
-import br.com.barbearia.apibarbearia.auth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,15 +30,20 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
+    private final SecurityExceptionHandler securityExceptionHandler; // Injetado para tratar os erros 401 e 403
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors().and()
                 .csrf().disable()
+                // Configuração para usar o seu Handler personalizado
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(securityExceptionHandler)
+                        .accessDeniedHandler(securityExceptionHandler)
+                )
                 .authorizeHttpRequests(auth -> auth
                         .antMatchers("/api/auth/recovery/**").permitAll()
-
                         .antMatchers("/api/auth/**").permitAll()
                         .antMatchers("/api/public/**").permitAll()
                         .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()

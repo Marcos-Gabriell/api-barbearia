@@ -1,10 +1,11 @@
 package br.com.barbearia.apibarbearia.users.service;
 
+import br.com.barbearia.apibarbearia.availability.service.AvailabilityService;
 import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
 import br.com.barbearia.apibarbearia.common.exception.ConflictException;
 import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
 import br.com.barbearia.apibarbearia.notification.email.users.UserEmailNotificationService;
-import br.com.barbearia.apibarbearia.users.dtos.*;
+import br.com.barbearia.apibarbearia.users.dto.*;
 import br.com.barbearia.apibarbearia.users.entity.Role.Role;
 import br.com.barbearia.apibarbearia.users.entity.User;
 import br.com.barbearia.apibarbearia.users.entity.UserInvite;
@@ -33,6 +34,11 @@ public class UserService {
     private final UserInviteRepository inviteRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserEmailNotificationService emailNotificationService;
+    private final AvailabilityService availabilityService;
+
+    // =========================================================
+    // LISTAGEM E CONSULTA
+    // =========================================================
 
     public List<UserResponse> list() {
         Role actor = currentRole();
@@ -48,6 +54,7 @@ public class UserService {
                     .map(this::toResponse)
                     .collect(Collectors.toList());
         }
+        // Staff vê outros Staffs
         return userRepository.findAllByRole(Role.STAFF)
                 .stream().map(this::toResponse)
                 .collect(Collectors.toList());
@@ -63,6 +70,10 @@ public class UserService {
         return toResponse(target);
     }
 
+    // =========================================================
+    // CONVITES
+    // =========================================================
+
     @Transactional
     public void inviteUser(InviteUserRequest req) {
         Role actor = currentRole();
@@ -76,6 +87,7 @@ public class UserService {
             throw new ConflictException("Já existe um usuário ativo com este e-mail.");
         }
 
+        // Limpeza de usuários inativos antigos com mesmo e-mail
         userRepository.findByEmail(email).ifPresent(existing -> {
             if (!existing.isActive()) {
                 userRepository.delete(existing);
@@ -83,6 +95,7 @@ public class UserService {
             }
         });
 
+        // Verifica convites pendentes
         List<UserInvite> existingInvites = inviteRepository.findAllByEmail(email);
         boolean hasValidInvite = existingInvites.stream()
                 .anyMatch(inv -> !inv.isUsed() && inv.getExpiresAt().isAfter(Instant.now()));
@@ -131,11 +144,15 @@ public class UserService {
         return invite;
     }
 
+    // =========================================================
+    // CADASTRO FINAL (Completa o Convite)
+    // =========================================================
+
     @Transactional
     public UserResponse completeInvite(CompleteInviteRequest req) {
         UserInvite invite = validateInviteToken(req.getToken());
 
-        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
+        // Validação do Nome (sem números)
         String validName = validateAndNormalizeName(req.getName());
 
         if (!req.getPassword().equals(req.getConfirmPassword())) {
@@ -155,13 +172,14 @@ public class UserService {
             validatePhoneUniqueness(cleanPhone, null);
         }
 
+        // Remove resquícios se houver
         userRepository.findByEmail(invite.getEmail()).ifPresent(u -> {
             userRepository.delete(u);
             userRepository.flush();
         });
 
         User newUser = User.builder()
-                .name(validName) // Usa o nome validado
+                .name(validName)
                 .email(invite.getEmail())
                 .phone(cleanPhone)
                 .role(invite.getRole())
@@ -174,6 +192,17 @@ public class UserService {
 
         User savedUser = userRepository.save(newUser);
 
+        // ✅ CRIAÇÃO AUTOMÁTICA DA AGENDA (Segunda a Sábado, 08h-18h, Domingo inativo)
+        System.out.println("🔧 Criando agenda padrão para usuário ID: " + savedUser.getId());
+        try {
+            availabilityService.createDefaultSchedule(savedUser.getId());
+            System.out.println("✅ Agenda criada com sucesso para user " + savedUser.getId());
+        } catch (Exception e) {
+            System.err.println("❌ ERRO ao criar agenda: " + e.getMessage());
+            e.printStackTrace();
+            // Não lançar exceção para não quebrar o cadastro do usuário
+        }
+
         invite.setUsed(true);
         inviteRepository.save(invite);
 
@@ -184,6 +213,11 @@ public class UserService {
         return toResponse(savedUser);
     }
 
+    // =========================================================
+    // ATUALIZAÇÃO
+    // =========================================================
+
+    @Transactional
     public UserResponse update(Long id, UserUpdateRequest req) {
         Role actor = currentRole();
         User target = getUser(id);
@@ -198,7 +232,7 @@ public class UserService {
         }
 
         if (actor == Role.ADMIN && req.getRole() != Role.STAFF) {
-            throw new BadRequestException("Administrador não pode elevar privilégios.");
+            throw new BadRequestException("Administrador não pode elevar privilégios para outros cargos.");
         }
 
         if (req.getPhone() != null) {
@@ -209,12 +243,11 @@ public class UserService {
             }
         }
 
-        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
         String validName = validateAndNormalizeName(req.getName());
 
         boolean updatedBySelf = currentUserId() != null && currentUserId().equals(target.getId());
 
-        target.setName(validName); // Usa o nome validado
+        target.setName(validName);
         target.setEmail(email);
         target.setUpdatedAt(Instant.now());
 
@@ -239,6 +272,11 @@ public class UserService {
         return toResponse(saved);
     }
 
+    // =========================================================
+    // ADMINISTRAÇÃO (Delete / Activate / Reset)
+    // =========================================================
+
+    @Transactional
     public UserResponse deleteAndReturn(Long id) {
         Role actor = currentRole();
         User target = getUser(id);
@@ -260,6 +298,7 @@ public class UserService {
         return toResponse(target);
     }
 
+    @Transactional
     public UserResponse activateAndReturn(Long id) {
         Role actor = currentRole();
         User target = getUser(id);
@@ -273,6 +312,7 @@ public class UserService {
         return toResponse(userRepository.save(target));
     }
 
+    @Transactional
     public UserWithTempPasswordResponse resetPassword(Long id) {
         Role actor = currentRole();
         User target = getUser(id);
@@ -297,6 +337,11 @@ public class UserService {
         return wrapWithTemp(target, temp);
     }
 
+    // =========================================================
+    // RECUPERAÇÃO DE SENHA (Flow Público)
+    // =========================================================
+
+    @Transactional
     public void requestPasswordReset(ForgotPasswordRequest req) {
         String email = normalizeEmail(req.getEmail());
         Optional<User> userOptional = userRepository.findByEmail(email);
@@ -327,6 +372,7 @@ public class UserService {
         }
     }
 
+    @Transactional
     public void completePasswordReset(CompletePasswordResetRequest req) {
         User user = userRepository.findByEmail(normalizeEmail(req.getEmail()))
                 .orElseThrow(() -> new NotFoundException("Usuário não encontrado."));
@@ -347,11 +393,15 @@ public class UserService {
         userRepository.save(user);
     }
 
+    // =========================================================
+    // MEU PERFIL (Self Update)
+    // =========================================================
+
+    @Transactional
     public UserResponse updateMyProfile(User user, UpdateMyProfileRequest req) {
         String currentEmail = user.getEmail();
         String newEmailRaw = req.getEmail().toLowerCase().trim();
 
-        // CORREÇÃO: Validação Centralizada do Nome (Sem números)
         String validName = validateAndNormalizeName(req.getName());
 
         boolean nameChanged = !user.getName().equals(validName);
@@ -369,7 +419,7 @@ public class UserService {
             }
         }
 
-        if (nameChanged) user.setName(validName); // Usa o nome validado
+        if (nameChanged) user.setName(validName);
 
         if (emailChanged) {
             if (userRepository.existsByEmailAndIdNot(newEmailRaw, user.getId())) {
@@ -396,6 +446,7 @@ public class UserService {
         return toResponse(saved);
     }
 
+    @Transactional
     public User confirmEmailUpdate(User user, String code) {
         if (user.getPendingEmail() == null || user.getEmailVerificationCode() == null ||
                 !user.getEmailVerificationCode().equals(code)) {
@@ -414,6 +465,7 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    @Transactional
     public void changePassword(User user, ChangePasswordRequest req) {
         if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
             throw new BadRequestException("Senha atual incorreta.");
@@ -435,9 +487,9 @@ public class UserService {
         } catch (Exception ignored) {}
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // HELPERS E VALIDAÇÕES
-    // ---------------------------------------------------------
+    // =========================================================
 
     private void validatePhoneUniqueness(String phone, Long userIdToIgnore) {
         String cleanPhone = phone.replaceAll("[^0-9]", "");
@@ -452,17 +504,13 @@ public class UserService {
         }
     }
 
-    // NOVO MÉTODO: Garante que o nome chegue "bonitinho" (sem números) ao banco
     private String validateAndNormalizeName(String name) {
         if (name == null || name.trim().length() < 3) {
             throw new BadRequestException("O nome é obrigatório e deve ter no mínimo 3 caracteres.");
         }
-
-        // Verifica se contém qualquer dígito (0-9)
         if (name.matches(".*\\d.*")) {
-            throw new BadRequestException("O nome não pode conter números. Por favor, insira um nome válido.");
+            throw new BadRequestException("O nome não pode conter números.");
         }
-
         return name.trim();
     }
 

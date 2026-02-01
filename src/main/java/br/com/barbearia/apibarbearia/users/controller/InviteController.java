@@ -1,6 +1,6 @@
 package br.com.barbearia.apibarbearia.users.controller;
 
-import br.com.barbearia.apibarbearia.users.dtos.CompleteInviteRequest;
+import br.com.barbearia.apibarbearia.users.dto.CompleteInviteRequest;
 import br.com.barbearia.apibarbearia.users.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

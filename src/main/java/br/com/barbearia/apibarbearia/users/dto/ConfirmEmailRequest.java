@@ -1,4 +1,4 @@
-package br.com.barbearia.apibarbearia.users.dtos;
+package br.com.barbearia.apibarbearia.users.dto;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
