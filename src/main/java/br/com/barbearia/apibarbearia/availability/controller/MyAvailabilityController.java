@@ -4,7 +4,6 @@ import br.com.barbearia.apibarbearia.availability.dto.BlockRequestDTO;
 import br.com.barbearia.apibarbearia.availability.dto.ScheduleDTOs;
 import br.com.barbearia.apibarbearia.availability.service.AvailabilityService;
 import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
-import br.com.barbearia.apibarbearia.common.exception.NotFoundException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -52,20 +51,19 @@ public class MyAvailabilityController {
         Long me = getAuthenticatedUserId();
         String role = getAuthenticatedUserRole();
 
-        request.setTargetUserId(me); // garante self
+        request.setTargetUserId(me);
 
         availabilityService.createBlock(me, role, request);
         return ResponseEntity.status(201).body(Map.of("message", "Bloqueio criado com sucesso."));
     }
 
-    // ✅ Helpers CORRETOS (não dependem de principal ser User)
     private Long getAuthenticatedUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new BadRequestException("Sessão inválida.");
         }
         try {
-            return Long.parseLong(auth.getName()); // subject do token = ID
+            return Long.parseLong(auth.getName());
         } catch (NumberFormatException e) {
             throw new BadRequestException("Sessão inválida.");
         }

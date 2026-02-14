@@ -22,19 +22,19 @@ public class ScheduleBlock {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "start_date", nullable = false) // ✅ ADICIONAR
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
-    @Column(name = "end_date") // ✅ ADICIONAR
+    @Column(name = "end_date")
     private LocalDate endDate;
 
-    @Column(name = "full_day", nullable = false) // ✅ ADICIONAR
+    @Column(name = "full_day", nullable = false)
     private boolean fullDay;
 
-    @Column(name = "start_time") // ✅ ADICIONAR
+    @Column(name = "start_time")
     private LocalTime startTime;
 
-    @Column(name = "end_time") // ✅ ADICIONAR
+    @Column(name = "end_time")
     private LocalTime endTime;
 
     @Column(length = 120)

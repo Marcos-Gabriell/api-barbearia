@@ -32,9 +32,6 @@ public class ScheduleService {
         this.blockRepository = blockRepository;
     }
 
-    // -----------------------------------------------------------------------
-    // WORKING HOURS
-    // -----------------------------------------------------------------------
 
     @Transactional
     public WorkingHours upsertWorkingHours(Long professionalId, WorkingHoursUpsertDTO dto) {
@@ -59,10 +56,6 @@ public class ScheduleService {
         return workingHoursRepository.findByProfessionalId(professionalId);
     }
 
-    // -----------------------------------------------------------------------
-    // BREAKS
-    // -----------------------------------------------------------------------
-
     @Transactional
     public BreakInterval createBreak(Long professionalId, BreakCreateDTO dto) {
         if (dto == null) throw new BadRequestException("Dados inválidos.");
@@ -77,12 +70,10 @@ public class ScheduleService {
             throw new BadRequestException("Dia desativado. Ative o dia antes de criar pausa.");
         }
 
-        // pausa dentro do expediente
         if (dto.startTime.isBefore(wh.getStartTime()) || dto.endTime.isAfter(wh.getEndTime())) {
             throw new BadRequestException("A pausa precisa estar dentro do horário de funcionamento.");
         }
 
-        // sem sobreposição
         List<BreakInterval> existing = breakRepository.findByProfessionalIdAndDayOfWeek(professionalId, dto.dayOfWeek);
         for (BreakInterval b : existing) {
             if (overlaps(dto.startTime, dto.endTime, b.getStartTime(), b.getEndTime())) {
@@ -119,10 +110,6 @@ public class ScheduleService {
 
         breakRepository.delete(b);
     }
-
-    // -----------------------------------------------------------------------
-    // OVERRIDES (exceção por data)
-    // -----------------------------------------------------------------------
 
     @Transactional
     public DayOverride upsertOverride(Long professionalId, DayOverrideUpsertDTO dto) {
@@ -179,10 +166,6 @@ public class ScheduleService {
         return overrideRepository.findByProfessionalIdAndDateBetween(professionalId, from, to);
     }
 
-    // -----------------------------------------------------------------------
-    // BLOCKS (bloqueios por data/faixa)
-    // -----------------------------------------------------------------------
-
     @Transactional
     public TimeBlock createBlock(Long professionalId, BlockCreateDTO dto) {
         if (dto == null) throw new BadRequestException("Dados inválidos.");
@@ -208,7 +191,6 @@ public class ScheduleService {
             b.setStartAt(dto.startAt);
             b.setEndAt(dto.endAt);
 
-            // opcional: facilita busca por dia
             b.setDate(dto.startAt.toLocalDate());
         }
 
@@ -232,9 +214,6 @@ public class ScheduleService {
         return blockRepository.findByProfessionalIdAndDate(professionalId, date);
     }
 
-    // -----------------------------------------------------------------------
-    // HELPERS
-    // -----------------------------------------------------------------------
 
     private void validateTimeRange(LocalTime start, LocalTime end, String message) {
         if (start == null || end == null) throw new BadRequestException(message);

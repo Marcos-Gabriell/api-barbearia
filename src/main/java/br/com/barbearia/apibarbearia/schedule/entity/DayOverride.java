@@ -25,7 +25,6 @@ public class DayOverride {
     @Column(nullable=false)
     private LocalDate date;
 
-    // Se fechado=true, ignora start/end
     @Column(nullable=false)
     private Boolean closed = false;
 

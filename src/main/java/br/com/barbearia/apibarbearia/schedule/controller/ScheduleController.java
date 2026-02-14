@@ -40,7 +40,7 @@ public class ScheduleController {
         WorkingHours saved = scheduleService.upsertWorkingHours(professionalId, dto);
 
         String updatedBy = currentActorDisplay();
-        String professionalName = professionalLabel(professionalId); // TODO: buscar nome real do profissional
+        String professionalName = professionalLabel(professionalId);
 
         notifyAdminsAndStaffWorkingHours(professionalName, dto, updatedBy);
 
@@ -60,7 +60,7 @@ public class ScheduleController {
         BreakInterval saved = scheduleService.createBreak(professionalId, dto);
 
         String createdBy = currentActorDisplay();
-        String professionalName = professionalLabel(professionalId); // TODO
+        String professionalName = professionalLabel(professionalId);
 
         notifyAdminsAndStaffBreakCreated(professionalName, dto, createdBy);
 
@@ -84,7 +84,7 @@ public class ScheduleController {
 
         if (snapshot != null) {
             String deletedBy = currentActorDisplay();
-            String professionalName = professionalLabel(professionalId); // TODO
+            String professionalName = professionalLabel(professionalId);
             notifyAdminsAndStaffBreakDeleted(professionalName, snapshot, deletedBy);
         }
 
@@ -100,7 +100,7 @@ public class ScheduleController {
         DayOverride saved = scheduleService.upsertOverride(professionalId, dto);
 
         String updatedBy = currentActorDisplay();
-        String professionalName = professionalLabel(professionalId); // TODO
+        String professionalName = professionalLabel(professionalId);
 
         notifyAdminsAndStaffOverride(professionalName, dto, updatedBy);
 
@@ -119,12 +119,11 @@ public class ScheduleController {
 
         if (snapshot != null) {
             String updatedBy = currentActorDisplay();
-            String professionalName = professionalLabel(professionalId); // TODO
+            String professionalName = professionalLabel(professionalId);
 
-            // manda e-mail como "updated" informando remoção (padrão simples)
             DayOverrideUpsertDTO dto = new DayOverrideUpsertDTO();
             dto.date = snapshot.getDate();
-            dto.closed = true; // sinaliza mudança forte
+            dto.closed = true;
             dto.startTime = null;
             dto.endTime = null;
             dto.note = "Override removido";

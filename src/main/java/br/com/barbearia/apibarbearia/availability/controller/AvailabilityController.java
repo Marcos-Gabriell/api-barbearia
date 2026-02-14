@@ -1,8 +1,11 @@
 package br.com.barbearia.apibarbearia.availability.controller;
 
 import br.com.barbearia.apibarbearia.availability.dto.BlockRequestDTO;
+import br.com.barbearia.apibarbearia.availability.dto.ProfessionalDTO;
 import br.com.barbearia.apibarbearia.availability.dto.ScheduleDTOs;
+import br.com.barbearia.apibarbearia.availability.entity.ScheduleBlock;
 import br.com.barbearia.apibarbearia.availability.service.AvailabilityService;
+import br.com.barbearia.apibarbearia.common.exception.BadRequestException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -10,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,62 +28,64 @@ public class AvailabilityController {
         this.availabilityService = availabilityService;
     }
 
-    // ✅ FIX: ADICIONADO O ENDPOINT GET QUE FALTAVA
+    @GetMapping("/professionals")
+    public ResponseEntity<List<ProfessionalDTO>> listProfessionals() {
+        Long requesterId = getUserId();
+        String role = getRole();
+        return ResponseEntity.ok(availabilityService.getManageableProfessionals(requesterId, role));
+    }
+
     @GetMapping("/schedule/{targetUserId}")
     public ResponseEntity<ScheduleDTOs.ScheduleRequest> getSchedule(@PathVariable Long targetUserId) {
-        Long requesterId = getAuthenticatedUserId();
-        String requesterRole = getAuthenticatedUserRole();
-
-        // Chama o serviço de leitura que criamos anteriormente
-        var schedule = availabilityService.getSchedule(requesterId, requesterRole, targetUserId);
-
-        return ResponseEntity.ok(schedule);
+        Long requesterId = getUserId();
+        String role = getRole();
+        return ResponseEntity.ok(availabilityService.getSchedule(requesterId, role, targetUserId));
     }
 
     @PutMapping("/schedule/{targetUserId}")
-    public ResponseEntity<?> updateSchedule(
+    public ResponseEntity<Map<String, String>> updateSchedule(
             @PathVariable Long targetUserId,
-            @RequestBody @Valid ScheduleDTOs.ScheduleRequest request) {
+            @RequestBody @Valid ScheduleDTOs.ScheduleRequest request
+    ) {
+        Long requesterId = getUserId();
+        String role = getRole();
+        availabilityService.updateRoutine(requesterId, role, targetUserId, request);
+        return ResponseEntity.ok(Collections.singletonMap("message", "Agenda semanal configurada com sucesso."));
+    }
 
-        Long requesterId = getAuthenticatedUserId();
-        String requesterRole = getAuthenticatedUserRole();
-
-        availabilityService.updateRoutine(requesterId, requesterRole, targetUserId, request);
-
-        return ResponseEntity.ok(Map.of(
-                "message", "Agenda semanal configurada com sucesso."
-        ));
+    @GetMapping("/blocks/{targetUserId}")
+    public ResponseEntity<List<ScheduleBlock>> listBlocks(@PathVariable Long targetUserId) {
+        Long requesterId = getUserId();
+        String role = getRole();
+        return ResponseEntity.ok(availabilityService.listBlocks(requesterId, role, targetUserId));
     }
 
     @PostMapping("/block")
-    public ResponseEntity<?> createBlock(@RequestBody @Valid BlockRequestDTO request) {
-
-        Long requesterId = getAuthenticatedUserId();
-        String requesterRole = getAuthenticatedUserRole();
-
-        availabilityService.createBlock(requesterId, requesterRole, request);
-
-        return ResponseEntity.status(201).body(Map.of(
-                "message", "Bloqueio de agenda criado com sucesso."
-        ));
+    public ResponseEntity<Map<String, String>> createBlock(@RequestBody @Valid BlockRequestDTO request) {
+        Long requesterId = getUserId();
+        String role = getRole();
+        availabilityService.createBlock(requesterId, role, request);
+        return ResponseEntity.status(201).body(Collections.singletonMap("message", "Bloqueio criado com sucesso."));
     }
 
-    // --- Helpers ---
-
-    private Long getAuthenticatedUserId() {
+    private Long getUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof br.com.barbearia.apibarbearia.users.entity.User) {
-            return ((br.com.barbearia.apibarbearia.users.entity.User) auth.getPrincipal()).getId();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new BadRequestException("Sessão inválida.");
         }
-        throw new RuntimeException("Usuário não identificado no contexto de segurança");
+        try {
+            return Long.parseLong(auth.getName());
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("Sessão inválida.");
+        }
     }
 
-    private String getAuthenticatedUserRole() {
+    private String getRole() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && !auth.getAuthorities().isEmpty()) {
-            String role = auth.getAuthorities().iterator().next().getAuthority();
-            return role.replace("ROLE_", "");
-        }
-        return "STAFF";
+        if (auth == null) throw new BadRequestException("Sessão inválida.");
+        return auth.getAuthorities().stream()
+                .map(a -> a.getAuthority().replace("ROLE_", ""))
+                .findFirst()
+                .orElse("STAFF");
     }
 }
