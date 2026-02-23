@@ -123,6 +123,19 @@ public class EmailLayout {
                 .replace("'", "&#39;");
     }
 
+
+    public String button(String text, String link) {
+        return ""
+                + "<div style='margin:16px 0;'>"
+                + "  <a href='" + link + "' "
+                + "     style='display:inline-block;padding:12px 16px;"
+                + "     background:#111827;color:#ffffff;text-decoration:none;"
+                + "     border-radius:10px;font-weight:600;'>"
+                +       text
+                + "  </a>"
+                + "</div>";
+    }
+
     public String escapeAttr(String s) {
         return escape(s);
     }

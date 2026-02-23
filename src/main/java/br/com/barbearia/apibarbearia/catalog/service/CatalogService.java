@@ -200,7 +200,7 @@ public class CatalogService {
         BigDecimal price = item.getPrice();
         boolean isActive = item.isActive();
 
-        item.setResponsibles(new HashSet<>());
+        item.clearResponsibles();
         item.softDelete();
         repository.save(item);
 

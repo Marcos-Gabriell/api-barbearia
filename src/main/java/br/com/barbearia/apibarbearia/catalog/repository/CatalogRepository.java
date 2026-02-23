@@ -21,4 +21,6 @@ public interface CatalogRepository extends JpaRepository<CatalogItem, Long> {
     boolean existsByNameIgnoreCaseAndDeletedFalseAndIdNot(String name, Long id);
 
     boolean existsByResponsibles_Id(Long userId);
+
+    List<CatalogItem> findAllByActiveTrue();
 }

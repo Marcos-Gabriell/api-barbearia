@@ -43,14 +43,13 @@ public class CatalogItem {
     @Column(nullable = false, updatable = false)
     private Long createdByUserId;
 
-    // ✅ CORREÇÃO: FetchType.EAGER garante que a lista venha preenchida
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "catalog_item_responsibles",
             joinColumns = @JoinColumn(name = "catalog_item_id"),
             inverseJoinColumns = @JoinColumn(name = "user_id")
     )
-    private Set<User> responsibles = new HashSet<>();
+    private final Set<User> responsibles = new HashSet<>();
 
     protected CatalogItem() {}
 
@@ -91,10 +90,14 @@ public class CatalogItem {
     }
 
     public void setResponsibles(Set<User> users) {
-        this.responsibles = users;
+        this.responsibles.clear();
+        if (users != null) this.responsibles.addAll(users);
     }
 
-    // Getters
+    public void clearResponsibles() {
+        this.responsibles.clear();
+    }
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public String getDescription() { return description; }

@@ -45,10 +45,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .antMatchers("/api/auth/recovery/**").permitAll()
                         .antMatchers("/api/auth/**").permitAll()
+
+                        // libera endpoints públicos com e sem /api
                         .antMatchers("/api/public/**").permitAll()
+                        .antMatchers("/public/**").permitAll()
+
                         .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
+
+
                 .sessionManagement(sess -> sess
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
