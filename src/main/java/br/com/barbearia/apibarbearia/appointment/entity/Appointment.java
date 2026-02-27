@@ -53,7 +53,7 @@ public class Appointment {
     @Column(nullable = false)
     private String professionalEmail;
 
-    // ================== HORÁRIOS DO AGENDAMENTO ==================
+    // ================== HORÁRIOS ==================
     @Column(nullable = false)
     private LocalDateTime startAt;
 
@@ -66,13 +66,11 @@ public class Appointment {
     private AppointmentStatus status;
 
     // ================== AUDITORIA DE CRIAÇÃO ==================
-    @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(nullable = false)
     private Long createdByUserId;
 
-    @Column(nullable = false, length = 20)
+    @Column(length = 20)
     private String createdByRole;
 
     @Column(length = 100)
@@ -116,11 +114,8 @@ public class Appointment {
     @Column(length = 150)
     private String canceledByEmail;
 
-    /**
-     * Origem do cancelamento: INTERNAL (staff/admin) ou CLIENT (cliente via link)
-     */
     @Column(length = 20)
-    private String cancelOrigin;
+    private String cancelOrigin;  // "INTERNAL" ou "CLIENT"
 
     // ================== AUDITORIA DE NO-SHOW ==================
     private LocalDateTime noShowAt;
@@ -137,6 +132,13 @@ public class Appointment {
     private LocalDateTime updatedAt;
 
     // ================== MÉTODOS AUXILIARES ==================
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 
     public boolean isCancelable() {
         if (status == AppointmentStatus.CANCELLED || status == AppointmentStatus.NO_SHOW) {
@@ -169,11 +171,9 @@ public class Appointment {
 
     public String getCanceledByDescription() {
         if (canceledAt == null) return null;
-
         if ("CLIENT".equals(cancelOrigin)) {
             return "Cliente via link";
         }
-
         if (canceledByUsername == null || canceledByUsername.isEmpty()) {
             return canceledByRole != null ? canceledByRole : "Sistema";
         }
@@ -182,7 +182,6 @@ public class Appointment {
 
     public String getConfirmedByDescription() {
         if (confirmedAt == null) return null;
-
         if (confirmedByUsername == null || confirmedByUsername.isEmpty()) {
             return confirmedByRole != null ? confirmedByRole : "Sistema";
         }
@@ -191,7 +190,6 @@ public class Appointment {
 
     public String getNoShowByDescription() {
         if (noShowAt == null) return null;
-
         if (noShowByUsername == null || noShowByUsername.isEmpty()) {
             return noShowByRole != null ? noShowByRole : "Sistema";
         }

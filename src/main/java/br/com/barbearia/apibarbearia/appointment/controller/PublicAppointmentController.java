@@ -3,6 +3,7 @@ package br.com.barbearia.apibarbearia.appointment.controller;
 import br.com.barbearia.apibarbearia.appointment.dto.request.CreateAppointmentInternalRequest;
 import br.com.barbearia.apibarbearia.appointment.dto.response.AppointmentCreatedResponse;
 import br.com.barbearia.apibarbearia.appointment.dto.response.AppointmentSlotResponse;
+import br.com.barbearia.apibarbearia.appointment.dto.response.CancelInfoResponse;
 import br.com.barbearia.apibarbearia.appointment.dto.response.ProfessionalSimpleResponse;
 import br.com.barbearia.apibarbearia.appointment.service.AppointmentPublicService;
 import br.com.barbearia.apibarbearia.catalog.entity.CatalogItem;
@@ -25,9 +26,7 @@ import java.util.stream.Collectors;
 public class PublicAppointmentController {
 
     private final AppointmentPublicService publicService;
-
     private final CatalogRepository catalogRepository;
-
 
     @GetMapping("/services/{serviceId}/professionals")
     public ResponseEntity<List<ProfessionalSimpleResponse>> getProfessionalsByService(
@@ -71,5 +70,11 @@ public class PublicAppointmentController {
         return ResponseEntity.noContent().build();
     }
 
-
+    @GetMapping("/cancel-info")
+    public ResponseEntity<CancelInfoResponse> getCancelInfo(
+            @RequestParam("token") String token
+    ) {
+        CancelInfoResponse info = publicService.getCancelInfo(token);
+        return ResponseEntity.ok(info);
+    }
 }

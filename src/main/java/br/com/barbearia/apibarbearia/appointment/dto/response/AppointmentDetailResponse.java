@@ -4,7 +4,6 @@ import br.com.barbearia.apibarbearia.appointment.entity.enums.AppointmentCancelR
 import br.com.barbearia.apibarbearia.appointment.entity.enums.AppointmentStatus;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @Getter
@@ -40,7 +39,7 @@ public class AppointmentDetailResponse {
     // Status
     private AppointmentStatus status;
 
-    // ================== AUDITORIA DE CRIAÇÃO ==================
+    // Auditoria de criação
     private LocalDateTime createdAt;
     private Long createdByUserId;
     private String createdByRole;
@@ -48,7 +47,7 @@ public class AppointmentDetailResponse {
     private String createdByEmail;
     private String createdByDescription;
 
-    // ================== AUDITORIA DE CONFIRMAÇÃO ==================
+    // Auditoria de confirmação
     private LocalDateTime confirmedAt;
     private Long confirmedByUserId;
     private String confirmedByRole;
@@ -56,7 +55,7 @@ public class AppointmentDetailResponse {
     private String confirmedByEmail;
     private String confirmedByDescription;
 
-    // ================== AUDITORIA DE CANCELAMENTO ==================
+    // Auditoria de cancelamento
     private LocalDateTime canceledAt;
     private AppointmentCancelReason cancelReason;
     private String cancelMessage;
@@ -67,7 +66,7 @@ public class AppointmentDetailResponse {
     private String cancelOrigin;
     private String canceledByDescription;
 
-    // ================== AUDITORIA DE NO-SHOW ==================
+    // Auditoria de no-show
     private LocalDateTime noShowAt;
     private Long noShowByUserId;
     private String noShowByRole;
@@ -77,7 +76,7 @@ public class AppointmentDetailResponse {
     // Última atualização
     private LocalDateTime updatedAt;
 
-    // ================== FLAGS DE AÇÕES PERMITIDAS ==================
+    // Flags de ações
     private Boolean canCancel;
     private Boolean canConfirm;
     private Boolean canMarkNoShow;

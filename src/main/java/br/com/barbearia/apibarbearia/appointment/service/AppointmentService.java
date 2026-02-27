@@ -39,12 +39,8 @@ public class AppointmentService {
     @Value("${app.frontend.url:http://localhost:4200}")
     private String frontendUrl;
 
-    // ==========================
-    // LISTAGEM com filtros
-    // ==========================
     @Transactional(readOnly = true)
     public Page<AppointmentDetailResponse> list(AppointmentFilterRequest filter, Long requesterId, String requesterRole) {
-
         Long professionalFilterId = filter != null ? filter.getProfessionalUserId() : null;
         accessService.ensureCanList(requesterRole, requesterId, professionalFilterId);
 
@@ -52,7 +48,6 @@ public class AppointmentService {
         int size = filter != null && filter.getSize() != null ? Math.min(Math.max(filter.getSize(), 1), 50) : 10;
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startAt"));
-
         Specification<Appointment> spec = Specification.where(null);
 
         if (filter != null) {
@@ -60,52 +55,35 @@ public class AppointmentService {
             spec = spec.and(AppointmentSpecifications.professionalId(filter.getProfessionalUserId()));
             spec = spec.and(AppointmentSpecifications.serviceId(filter.getServiceId()));
             spec = spec.and(AppointmentSpecifications.between(filter.getFrom(), filter.getTo()));
-
             String q = firstNonEmpty(filter.getQ(), filter.getClientName(), filter.getClientEmail(), filter.getClientPhone());
             spec = spec.and(AppointmentSpecifications.searchTerm(q));
         }
 
         Page<Appointment> appointments = appointmentRepository.findAll(spec, pageable);
-
         return appointments.map(this::toDetailResponse);
     }
 
-    // ==========================
-    // DETALHES DE UM AGENDAMENTO
-    // ==========================
     @Transactional(readOnly = true)
     public AppointmentDetailResponse getDetails(Long appointmentId, Long requesterId, String requesterRole) {
         Appointment a = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new NotFoundException("Agendamento não encontrado."));
-
         accessService.ensureCanManageAppointment(requesterRole, requesterId, a.getProfessionalUserId());
-
         return toDetailResponse(a);
     }
 
-    // ==========================
-    // DETALHES POR CÓDIGO
-    // ==========================
     @Transactional(readOnly = true)
     public AppointmentDetailResponse getDetailsByCode(String code, Long requesterId, String requesterRole) {
         if (!codeService.isValidFormat(code)) {
             throw new BadRequestException("Código de agendamento inválido.");
         }
-
         Appointment a = appointmentRepository.findByCode(code)
                 .orElseThrow(() -> new NotFoundException("Agendamento não encontrado."));
-
         accessService.ensureCanManageAppointment(requesterRole, requesterId, a.getProfessionalUserId());
-
         return toDetailResponse(a);
     }
 
-    // ==========================
-    // CRIAR INTERNO (balcão)
-    // ==========================
     @Transactional
     public AppointmentDetailResponse createInternal(CreateAppointmentInternalRequest req, Long requesterId, String requesterRole) {
-
         validateClient(req.getClientName(), req.getClientEmail(), req.getClientPhone());
         validateStart(req.getStartAt());
 
@@ -122,14 +100,11 @@ public class AppointmentService {
         availabilityFacade.validateWithinWorkSchedule(requesterId, requesterRole, professional.getId(), startAt, endAt);
 
         List<Appointment> overlaps = appointmentRepository.findOverlapsForUpdate(
-                professional.getId(),
-                startAt,
-                endAt,
+                professional.getId(), startAt, endAt,
                 Arrays.asList(AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED)
         );
         if (!overlaps.isEmpty()) throw new ConflictException("Conflito: este horário já está ocupado.");
 
-        // Busca dados do usuário que está criando
         User creator = userRepository.findById(requesterId).orElse(null);
         String creatorUsername = creator != null ? creator.getName() : null;
         String creatorEmail = creator != null ? creator.getEmail() : null;
@@ -151,7 +126,6 @@ public class AppointmentService {
                 .startAt(startAt)
                 .endAt(endAt)
                 .status(AppointmentStatus.PENDING)
-                // Auditoria de criação
                 .createdAt(now)
                 .createdByUserId(requesterId)
                 .createdByRole(accessService.normalizeRole(requesterRole))
@@ -161,7 +135,6 @@ public class AppointmentService {
 
         Appointment saved = appointmentRepository.save(a);
 
-        // Token de cancelamento
         String token = generateToken();
         AppointmentCancelToken t = AppointmentCancelToken.builder()
                 .appointmentId(saved.getId())
@@ -172,54 +145,47 @@ public class AppointmentService {
 
         String cancelLink = frontendUrl + "/cancelar-agendamento?token=" + token;
 
-        publisher.publishEvent(
-                AppointmentChangedEvent.builder()
-                        .type(AppointmentEventType.CREATED)
-                        .appointmentId(saved.getId())
-                        .appointmentCode(saved.getCode())
-                        .clientName(saved.getClientName())
-                        .clientEmail(saved.getClientEmail())
-                        .professionalName(saved.getProfessionalName())
-                        .professionalEmail(saved.getProfessionalEmail())
-                        .serviceName(saved.getServiceName())
-                        .startAt(saved.getStartAt())
-                        .endAt(saved.getEndAt())
-                        .durationMinutes(saved.getDurationMinutes())
-                        .cancelLink(cancelLink)
-                        .createdAt(now)
-                        .createdByUsername(creatorUsername)
-                        .createdByRole(accessService.normalizeRole(requesterRole))
-                        .build()
-        );
+        publisher.publishEvent(AppointmentChangedEvent.builder()
+                .type(AppointmentEventType.CREATED)
+                .appointmentId(saved.getId())
+                .appointmentCode(saved.getCode())
+                .clientName(saved.getClientName())
+                .clientEmail(saved.getClientEmail())
+                .professionalName(saved.getProfessionalName())
+                .professionalEmail(saved.getProfessionalEmail())
+                .serviceName(saved.getServiceName())
+                .startAt(saved.getStartAt())
+                .durationMinutes(saved.getDurationMinutes())
+                .cancelLink(cancelLink)
+                .createdAt(now)
+                .createdByUsername(creatorUsername)
+                .createdByRole(accessService.normalizeRole(requesterRole))
+                .build());
 
         return toDetailResponse(saved);
     }
 
-    // ==========================
-    // CANCELAR INTERNO (STAFF/ADMIN/DEV)
-    // ==========================
     @Transactional
     public void cancelInternal(Long appointmentId, CancelAppointmentInternalRequest req, Long requesterId, String requesterRole) {
-
         Appointment a = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new NotFoundException("Agendamento não encontrado."));
 
         accessService.ensureCanManageAppointment(requesterRole, requesterId, a.getProfessionalUserId());
-
         ensureCancelableByTime(a);
 
         if (a.getStatus() == AppointmentStatus.CANCELLED || a.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestException("Agendamento já está cancelado ou marcado como no-show.");
         }
 
-        // Busca dados do usuário que está cancelando
+        // Busca o usuário que está cancelando para pegar o nome real
         User canceler = userRepository.findById(requesterId).orElse(null);
-        String cancelerUsername = canceler != null ? canceler.getName() : null;
+        String cancelerUsername = canceler != null ? canceler.getName() : "Administração";
         String cancelerEmail = canceler != null ? canceler.getEmail() : null;
 
         LocalDateTime now = LocalDateTime.now();
         String cancelMsg = normalizeMsg(req != null ? req.getMessage() : null);
 
+        // Atualiza a Entidade
         a.setStatus(AppointmentStatus.CANCELLED);
         a.setCanceledAt(now);
         a.setCancelMessage(cancelMsg);
@@ -233,6 +199,7 @@ public class AppointmentService {
 
         appointmentRepository.save(a);
 
+        // Dispara o Evento com todos os campos necessários para o e-mail
         publisher.publishEvent(AppointmentChangedEvent.builder()
                 .type(AppointmentEventType.CANCELED)
                 .appointmentId(a.getId())
@@ -245,15 +212,11 @@ public class AppointmentService {
                 .startAt(a.getStartAt())
                 .canceledAt(now)
                 .canceledByUsername(cancelerUsername)
-                .canceledByRole(accessService.normalizeRole(requesterRole))
                 .cancelOrigin("INTERNAL")
-                .cancelMessage(cancelMsg)
+                .cancelMessage(cancelMsg) // CAMPO DA MENSAGEM
                 .build());
     }
 
-    // ==========================
-    // CANCELAR VIA TOKEN (CLIENTE)
-    // ==========================
     @Transactional
     public void cancelByToken(String token) {
         AppointmentCancelToken cancelToken = tokenRepository.findByToken(token)
@@ -281,8 +244,6 @@ public class AppointmentService {
         a.setUpdatedAt(now);
 
         appointmentRepository.save(a);
-
-        // Invalida o token
         tokenRepository.delete(cancelToken);
 
         publisher.publishEvent(AppointmentChangedEvent.builder()
@@ -301,9 +262,6 @@ public class AppointmentService {
                 .build());
     }
 
-    // ==========================
-    // CONFIRMAR CHEGADA
-    // ==========================
     @Transactional
     public void confirmArrival(Long appointmentId, Long requesterId, String requesterRole) {
         Appointment a = appointmentRepository.findById(appointmentId)
@@ -317,19 +275,16 @@ public class AppointmentService {
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime startAt = a.getStartAt();
-
         LocalDateTime minTime = startAt.minusMinutes(10);
         LocalDateTime maxTime = startAt.plusMinutes(10);
 
         if (now.isBefore(minTime)) {
             throw new BadRequestException("Confirmação permitida apenas a partir de 10 minutos antes do horário agendado.");
         }
-
         if (now.isAfter(maxTime)) {
-            throw new BadRequestException("Tempo limite para confirmação expirado. O agendamento será marcado como no-show automaticamente.");
+            throw new BadRequestException("Tempo limite para confirmação expirado.");
         }
 
-        // Busca dados do usuário que está confirmando
         User confirmer = userRepository.findById(requesterId).orElse(null);
         String confirmerUsername = confirmer != null ? confirmer.getName() : null;
         String confirmerEmail = confirmer != null ? confirmer.getEmail() : null;
@@ -360,9 +315,6 @@ public class AppointmentService {
                 .build());
     }
 
-    // ==========================
-    // NO-SHOW manual
-    // ==========================
     @Transactional
     public void markNoShow(Long appointmentId, Long requesterId, String requesterRole) {
         Appointment a = appointmentRepository.findById(appointmentId)
@@ -375,16 +327,13 @@ public class AppointmentService {
         if (now.isBefore(a.getStartAt())) {
             throw new BadRequestException("Só é possível marcar no-show após o horário do agendamento.");
         }
-
         if (a.getStatus() == AppointmentStatus.CANCELLED || a.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestException("Agendamento já está cancelado ou marcado como no-show.");
         }
-
         if (a.getStatus() == AppointmentStatus.CONFIRMED) {
             throw new BadRequestException("Agendamento já foi confirmado. Não é possível marcar como no-show.");
         }
 
-        // Busca dados do usuário que está marcando no-show
         User marker = userRepository.findById(requesterId).orElse(null);
         String markerUsername = marker != null ? marker.getName() : null;
 
@@ -393,15 +342,12 @@ public class AppointmentService {
         a.setNoShowByUserId(requesterId);
         a.setNoShowByRole(accessService.normalizeRole(requesterRole));
         a.setNoShowByUsername(markerUsername);
-        a.setCancelReason(AppointmentCancelReason.STAFF_NO_SHOW);
+        a.setCancelReason(AppointmentCancelReason.STAFF);
         a.setUpdatedAt(now);
 
         appointmentRepository.save(a);
     }
 
-    // ==========================
-    // Conversão para DTO
-    // ==========================
     private AppointmentDetailResponse toDetailResponse(Appointment a) {
         return AppointmentDetailResponse.builder()
                 .id(a.getId())
@@ -418,21 +364,21 @@ public class AppointmentService {
                 .startAt(a.getStartAt())
                 .endAt(a.getEndAt())
                 .status(a.getStatus())
-                // Auditoria de criação
+                // Criação
                 .createdAt(a.getCreatedAt())
                 .createdByUserId(a.getCreatedByUserId())
                 .createdByRole(a.getCreatedByRole())
                 .createdByUsername(a.getCreatedByUsername())
                 .createdByEmail(a.getCreatedByEmail())
                 .createdByDescription(a.getCreatedByDescription())
-                // Auditoria de confirmação
+                // Confirmação
                 .confirmedAt(a.getConfirmedAt())
                 .confirmedByUserId(a.getConfirmedByUserId())
                 .confirmedByRole(a.getConfirmedByRole())
                 .confirmedByUsername(a.getConfirmedByUsername())
                 .confirmedByEmail(a.getConfirmedByEmail())
                 .confirmedByDescription(a.getConfirmedByDescription())
-                // Auditoria de cancelamento
+                // Cancelamento
                 .canceledAt(a.getCanceledAt())
                 .cancelReason(a.getCancelReason())
                 .cancelMessage(a.getCancelMessage())
@@ -442,24 +388,20 @@ public class AppointmentService {
                 .canceledByEmail(a.getCanceledByEmail())
                 .cancelOrigin(a.getCancelOrigin())
                 .canceledByDescription(a.getCanceledByDescription())
-                // Auditoria de no-show
+                // No-show
                 .noShowAt(a.getNoShowAt())
                 .noShowByUserId(a.getNoShowByUserId())
                 .noShowByRole(a.getNoShowByRole())
                 .noShowByUsername(a.getNoShowByUsername())
                 .noShowByDescription(a.getNoShowByDescription())
-                // Última atualização
+                // Outros
                 .updatedAt(a.getUpdatedAt())
-                // Flags de ações permitidas
                 .canCancel(a.isCancelable())
                 .canConfirm(a.isConfirmable())
                 .canMarkNoShow(a.isNoShowMarkable())
                 .build();
     }
 
-    // ==========================
-    // Helpers
-    // ==========================
     private void validateStart(LocalDateTime startAt) {
         if (startAt == null) throw new BadRequestException("startAt é obrigatório.");
         if (startAt.isBefore(LocalDateTime.now())) throw new BadRequestException("Não é possível agendar no passado.");

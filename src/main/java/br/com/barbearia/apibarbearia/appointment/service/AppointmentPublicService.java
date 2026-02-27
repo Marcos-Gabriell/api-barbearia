@@ -3,6 +3,7 @@ package br.com.barbearia.apibarbearia.appointment.service;
 import br.com.barbearia.apibarbearia.appointment.dto.request.CreateAppointmentInternalRequest;
 import br.com.barbearia.apibarbearia.appointment.dto.response.AppointmentCreatedResponse;
 import br.com.barbearia.apibarbearia.appointment.dto.response.AppointmentSlotResponse;
+import br.com.barbearia.apibarbearia.appointment.dto.response.CancelInfoResponse;
 import br.com.barbearia.apibarbearia.appointment.entity.Appointment;
 import br.com.barbearia.apibarbearia.appointment.entity.AppointmentCancelToken;
 import br.com.barbearia.apibarbearia.appointment.entity.enums.AppointmentCancelReason;
@@ -40,6 +41,10 @@ public class AppointmentPublicService {
     @Value("${app.frontend.url:http://localhost:4200}")
     private String frontendUrl;
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  CRIAÇÃO PÚBLICA
+    // ════════════════════════════════════════════════════════════════════════
+
     @Transactional
     public AppointmentCreatedResponse createPublic(CreateAppointmentInternalRequest req) {
 
@@ -47,7 +52,7 @@ public class AppointmentPublicService {
         validateStart(req.getStartAt());
 
         CatalogItem service = availabilityFacade.getServiceOrFail(req.getServiceId());
-        User professional = availabilityFacade.getProfessionalOrFail(req.getProfessionalUserId());
+        User professional    = availabilityFacade.getProfessionalOrFail(req.getProfessionalUserId());
 
         if (!professional.isActive()) throw new BadRequestException("Profissional inativo.");
         availabilityFacade.validateProfessionalIsResponsible(service, professional.getId());
@@ -56,16 +61,12 @@ public class AppointmentPublicService {
         if (duration == null || duration < 5) throw new BadRequestException("Duração do serviço inválida.");
 
         LocalDateTime startAt = req.getStartAt();
-        LocalDateTime endAt = startAt.plusMinutes(duration);
+        LocalDateTime endAt   = startAt.plusMinutes(duration);
 
-        // valida agenda/pausas/blocks
         availabilityFacade.validateWithinWorkSchedule(null, null, professional.getId(), startAt, endAt);
 
-        // lock simultâneo
         List<Appointment> overlaps = appointmentRepository.findOverlapsForUpdate(
-                professional.getId(),
-                startAt,
-                endAt,
+                professional.getId(), startAt, endAt,
                 Arrays.asList(AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED)
         );
         if (!overlaps.isEmpty()) throw new ConflictException("Conflito: este horário já está ocupado.");
@@ -89,7 +90,6 @@ public class AppointmentPublicService {
 
         Appointment saved = appointmentRepository.save(a);
 
-        // token cancelamento
         String token = UUID.randomUUID() + "-" + UUID.randomUUID();
         AppointmentCancelToken t = AppointmentCancelToken.builder()
                 .appointmentId(saved.getId())
@@ -100,7 +100,6 @@ public class AppointmentPublicService {
 
         String cancelLink = frontendUrl + "/cancelar-agendamento?token=" + token;
 
-        // evento email
         publisher.publishEvent(AppointmentChangedEvent.builder()
                 .type(AppointmentEventType.CREATED)
                 .appointmentId(saved.getId())
@@ -113,7 +112,6 @@ public class AppointmentPublicService {
                 .cancelLink(cancelLink)
                 .build());
 
-        // ✅ resposta padrão
         return AppointmentCreatedResponse.builder()
                 .message("Agendamento criado com sucesso")
                 .appointmentId(saved.getId())
@@ -125,6 +123,10 @@ public class AppointmentPublicService {
                 .build();
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  CANCELAMENTO POR TOKEN
+    // ════════════════════════════════════════════════════════════════════════
+
     @Transactional
     public void cancelByToken(String token) {
         if (token == null || token.trim().isEmpty()) throw new BadRequestException("Token inválido.");
@@ -132,18 +134,16 @@ public class AppointmentPublicService {
         AppointmentCancelToken t = tokenRepository.findByToken(token)
                 .orElseThrow(() -> new NotFoundException("Token inválido."));
 
-        if (t.isUsed()) throw new BadRequestException("Token já utilizado.");
+        if (t.isUsed())    throw new BadRequestException("Token já utilizado.");
         if (t.isExpired()) throw new BadRequestException("Token expirado.");
 
         Appointment a = appointmentRepository.findById(t.getAppointmentId())
                 .orElseThrow(() -> new NotFoundException("Agendamento não encontrado."));
 
-        // ✅ seu enum atual é CANCELLED (não CANCELED) e você não tem NO_SHOW no enum que mostrou
         if (a.getStatus() == AppointmentStatus.CANCELLED) {
             throw new BadRequestException("Agendamento já cancelado.");
         }
 
-        // regra 10 min antes
         if (LocalDateTime.now().isAfter(a.getStartAt().minusMinutes(10))) {
             throw new BadRequestException("Cancelamento permitido apenas até 10 minutos antes do horário.");
         }
@@ -151,7 +151,6 @@ public class AppointmentPublicService {
         a.setStatus(AppointmentStatus.CANCELLED);
         a.setCanceledAt(LocalDateTime.now());
         a.setCancelReason(AppointmentCancelReason.CLIENT);
-
         appointmentRepository.save(a);
 
         t.setUsedAt(LocalDateTime.now());
@@ -170,19 +169,52 @@ public class AppointmentPublicService {
     }
 
     @Transactional(readOnly = true)
+    public CancelInfoResponse getCancelInfo(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new BadRequestException("Token inválido.");
+        }
+
+        AppointmentCancelToken t = tokenRepository.findByToken(token)
+                .orElseThrow(() -> new NotFoundException("Token inválido ou expirado."));
+
+        if (t.isUsed()) {
+            throw new BadRequestException("Token já utilizado. O agendamento já foi cancelado.");
+        }
+
+        if (t.isExpired()) {
+            throw new BadRequestException("Token expirado. Não é mais possível cancelar.");
+        }
+
+        Appointment a = appointmentRepository.findById(t.getAppointmentId())
+                .orElseThrow(() -> new NotFoundException("Agendamento não encontrado."));
+
+        if (a.getStatus() == AppointmentStatus.CANCELLED) {
+            throw new BadRequestException("Agendamento já cancelado.");
+        }
+
+        return CancelInfoResponse.builder()
+                .clientName(a.getClientName())
+                .serviceName(a.getServiceName())
+                .professionalName(a.getProfessionalName())
+                .startAt(a.getStartAt())
+                .code(a.getCode())
+                .build();
+    }
+
+
+    @Transactional(readOnly = true)
     public List<AppointmentSlotResponse> listSlots(Long serviceId, Long professionalId, LocalDate date) {
         return availabilityFacade.listAvailableSlots(serviceId, professionalId, date, 5);
     }
 
-    // helpers
     private void validateStart(LocalDateTime startAt) {
         if (startAt == null) throw new BadRequestException("startAt é obrigatório.");
         if (startAt.isBefore(LocalDateTime.now())) throw new BadRequestException("Não é possível agendar no passado.");
     }
 
     private void validateClient(String name, String email, String phone) {
-        if (name == null || name.trim().length() < 3) throw new BadRequestException("Nome inválido.");
-        if (email == null || email.trim().isEmpty()) throw new BadRequestException("E-mail é obrigatório.");
+        if (name  == null || name.trim().length() < 3)                          throw new BadRequestException("Nome inválido.");
+        if (email == null || email.trim().isEmpty())                            throw new BadRequestException("E-mail é obrigatório.");
         if (phone == null || phone.trim().length() < 11 || phone.trim().length() > 15) throw new BadRequestException("Telefone inválido.");
     }
 }
